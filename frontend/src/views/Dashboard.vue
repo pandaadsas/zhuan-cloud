@@ -52,13 +52,20 @@ const riskEl = ref()
 const typeEl = ref()
 
 onMounted(async () => {
-  const [ov, info] = await Promise.all([http.get('/api/stats/overview'), http.get('/api/meta/info')])
-  s.value = ov
-  meta.value = info
-  await nextTick()
-  drawTrend()
-  drawRisk()
-  drawType()
+  for (let i = 0; i < 3; i++) {
+    try {
+      const [ov, info] = await Promise.all([http.get('/api/stats/overview'), http.get('/api/meta/info')])
+      s.value = ov
+      meta.value = info
+      await nextTick()
+      drawTrend()
+      drawRisk()
+      drawType()
+      break
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+  }
 })
 
 function drawTrend() {

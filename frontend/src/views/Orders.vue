@@ -183,7 +183,14 @@ async function act(action) {
 }
 
 onMounted(async () => {
-  await load()
+  for (let i = 0; i < 3 && orders.value.length === 0; i++) {
+    try {
+      await load()
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+    if (orders.value.length === 0) await new Promise((r) => setTimeout(r, 1200))
+  }
   try {
     const opt = await http.get('/api/meta/options')
     respUsers.value = opt.responsible_users
