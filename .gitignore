@@ -8,6 +8,7 @@ backend/.venv/
 __pycache__/
 *.pyc
 backend/local_fallback.db
+backend/knowledge/embeddings_cache.json
 
 # ===== Node / 构建产物 =====
 node_modules/
