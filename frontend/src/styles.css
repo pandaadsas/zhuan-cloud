@@ -1,0 +1,37 @@
+:root {
+  --zhuan-blue: #1d5bd8;
+  --zhuan-blue-dark: #16419f;
+  --zhuan-bg: #f4f6fa;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  background: var(--zhuan-bg);
+  color: #26324b;
+}
+
+.page-title { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+.page-sub { color: #7a869c; font-size: 13px; margin-bottom: 16px; }
+
+.card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(30, 60, 120, 0.06); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(30,60,120,.06); }
+.stat-num { font-size: 28px; font-weight: 700; color: var(--zhuan-blue); }
+.stat-label { color: #7a869c; font-size: 13px; margin-top: 2px; }
+
+.md-body { line-height: 1.7; font-size: 14px; }
+.md-body h1 { font-size: 18px; } .md-body h2 { font-size: 16px; margin: 12px 0 6px; }
+.md-body ul, .md-body ol { padding-left: 20px; }
+
+.chat-box { height: calc(100vh - 230px); overflow-y: auto; padding: 12px; background: #f7f9fc; border-radius: 8px; }
+.msg { display: flex; margin-bottom: 12px; }
+.msg.me { justify-content: flex-end; }
+.bubble { max-width: 78%; padding: 10px 14px; border-radius: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.msg.me .bubble { background: var(--zhuan-blue); color: #fff; }
+.msg .bubble.md-body { color: #26324b; }
+
+.risk-低 { color: #67c23a; } .risk-中 { color: #e6a23c; }
+.risk-高 { color: #f56c6c; } .risk-重大 { color: #b71c1c; font-weight: 700; }

@@ -1,0 +1,23 @@
+# ===== 密钥与环境（严禁提交）=====
+backend/.env
+backend/.env.local_backup
+*.local
+
+# ===== Python =====
+backend/.venv/
+__pycache__/
+*.pyc
+backend/local_fallback.db
+
+# ===== Node / 构建产物 =====
+node_modules/
+frontend/dist/
+
+# ===== 运行时上传 =====
+backend/uploads/audio/*
+backend/uploads/images/*
+backend/uploads/misc/*
+!backend/uploads/.gitkeep
+
+.DS_Store
+Thumbs.db

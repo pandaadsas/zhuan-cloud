@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+pymysql
+cryptography
+pydantic-settings
+itsdangerous
+python-multipart
+langgraph>=0.2
+langchain-core
+openai>=1.40
+numpy
+python-docx
+httpx
+dashscope
