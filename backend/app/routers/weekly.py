@@ -39,6 +39,14 @@ def list_weekly(db: Session = Depends(get_db), user: User = Depends(require_role
     }
 
 
+@router.get("/{report_id}")
+def get_weekly(report_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles("safety_officer", "safety_supervisor", "project_manager"))):
+    report = db.get(WeeklyReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="周报不存在")
+    return {"id": report.id, "week": f"{report.week_start} ~ {report.week_end}", "content_md": report.content_md}
+
+
 @router.get("/{report_id}/export")
 def export(report_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles("safety_officer", "safety_supervisor", "project_manager"))):
     report = db.get(WeeklyReport, report_id)

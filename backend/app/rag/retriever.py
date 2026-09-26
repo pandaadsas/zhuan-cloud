@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Regulation
-from .llm import client, llm_ready
+from ..agents.llm import client, llm_ready
 
 logger = logging.getLogger("zhuan.rag")
 

@@ -24,8 +24,8 @@ def match_responsible(db: Session, extracted: dict) -> dict:
     if zone and zone.responsible_user_id:
         primary = db.get(User, zone.responsible_user_id)
         if primary:
-            sub_name = sub.name if sub else (zone.subcontractor.name if zone.subcontractor else "项目")
-            reason = f"「{building}」属{sub_name}责任区，区域责任人为{primary.name}"
+            zone_sub = zone.subcontractor.name if zone.subcontractor else (sub.name if sub else "项目")
+            reason = f"「{building}」属{zone_sub}责任区，区域责任人为{primary.name}"
     elif sub:
         primary = (
             db.query(User)
