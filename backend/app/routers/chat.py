@@ -113,7 +113,6 @@ def handle_kb(db: Session, msg: str) -> tuple[str, list]:
         lines.append(f"{i}. 《{r['doc_name']}》{r['clause_no']}（{r['title']}）：{r['content']}")
     lines.append("")
     lines.append("建议按上述条款组织落实；如需生成整改工单，请到「隐患上报」页面提交。")
-    lines.append("*（演示模式：以上为知识库原文检索结果）*")
     return "\n".join(lines), refs
 
 

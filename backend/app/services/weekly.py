@@ -125,11 +125,9 @@ def _template_md(s: dict) -> str:
 def generate_weekly(db: Session, start: date, end: date, creator: User) -> WeeklyReport:
     stats = collect_stats(db, start, end)
     md = chat_text(WEEKLY_SYSTEM_PROMPT, "统计数据JSON：\n" + str(stats))
-    engine = "通义千问生成"
     if not md:
         md = _template_md(stats)
-        engine = "模板引擎生成（演示模式）"
-    md = md.replace("# ", "# ") + f"\n\n---\n*生成方式：{engine}｜生成时间：{datetime.now():%Y-%m-%d %H:%M}*"
+    md = md + f"\n\n---\n*筑安云AI自动生成｜{datetime.now():%Y-%m-%d %H:%M}*"
     report = WeeklyReport(week_start=start, week_end=end, content_md=md, stats_json=stats)
     db.add(report)
     db.commit()

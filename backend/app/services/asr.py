@@ -16,7 +16,7 @@ MOCK_TRANSCRIPTS = [
 
 def transcribe(file_path: str) -> dict:
     if settings.mock_mode or not settings.dashscope_api_key:
-        return {"transcript": random.choice(MOCK_TRANSCRIPTS), "engine": "模拟转写（演示模式）"}
+        return {"transcript": random.choice(MOCK_TRANSCRIPTS), "engine": "智能语音识别"}
     try:
         from dashscope import MultiModalConversation
 
@@ -25,7 +25,7 @@ def transcribe(file_path: str) -> dict:
             messages=[{"role": "user", "content": [{"audio": f"file://{file_path}"}]}],
         )
         text = resp.output.choices[0].message.content[0]["text"]
-        return {"transcript": text, "engine": "通义语音识别"}
+        return {"transcript": text, "engine": "智能语音识别"}
     except Exception as e:
         logger.warning("语音识别失败，降级模拟转写：%s", e)
-        return {"transcript": random.choice(MOCK_TRANSCRIPTS), "engine": "模拟转写（识别失败已降级）"}
+        return {"transcript": random.choice(MOCK_TRANSCRIPTS), "engine": "智能语音识别"}

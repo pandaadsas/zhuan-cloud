@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, SessionLocal, db_mode, engine
+from .migrate import run_migrations
 from .rag.retriever import refresh_cache
 from .seed import run_if_empty
 
@@ -38,6 +39,7 @@ app.mount("/uploads", StaticFiles(directory=str(settings.upload_dir)), name="upl
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
+    run_migrations()
     db = SessionLocal()
     try:
         seeded = run_if_empty(db)

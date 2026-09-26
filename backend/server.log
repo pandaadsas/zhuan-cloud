@@ -1,0 +1,11 @@
+INFO:     Started server process [68172]
+INFO:     Waiting for application startup.
+2026-09-27 00:08:03,958 httpx2 INFO HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings "HTTP/1.1 200 OK"
+2026-09-27 00:08:04,182 httpx2 INFO HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings "HTTP/1.1 200 OK"
+2026-09-27 00:08:04,367 httpx2 INFO HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings "HTTP/1.1 200 OK"
+2026-09-27 00:08:04,780 httpx2 INFO HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings "HTTP/1.1 200 OK"
+2026-09-27 00:08:05,035 httpx2 INFO HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings "HTTP/1.1 200 OK"
+2026-09-27 00:08:15,121 zhuan.rag INFO 知识库缓存就绪：49条，检索模式=vector
+2026-09-27 00:08:15,122 zhuan.main INFO 筑安云启动完成 | 数据库=mysql | 知识检索=vector | 种子数据=已存在
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

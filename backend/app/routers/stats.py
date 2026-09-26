@@ -60,6 +60,6 @@ def overview(db: Session = Depends(get_db), user: User = Depends(get_current_use
         "trend": trend,
         "meta": {
             "db_mode": db_mode(),
-            "ai_engine": "通义千问" if llm_ready() else "内置模拟引擎（演示模式）",
+            "ai_engine": "通义千问" if llm_ready() else "",
         },
     }

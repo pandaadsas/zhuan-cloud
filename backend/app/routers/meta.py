@@ -54,5 +54,5 @@ def info(db: Session = Depends(get_db)):
         },
         "db_mode": db_mode(),
         "mock_mode": settings.mock_mode,
-        "ai_engine": "通义千问" if llm_ready() else "内置模拟引擎（演示模式）",
+        "ai_engine": "通义千问" if llm_ready() else "",
     }

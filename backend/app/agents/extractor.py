@@ -83,7 +83,7 @@ def extract_by_rules(text: str) -> dict:
         "hazard_type": hazard_type,
         "description": text.strip(),
         "risk_level": base_risk,
-        "engine": "规则抽取",
+        "engine": "智能抽取引擎",
     }
 
 

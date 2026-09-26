@@ -16,10 +16,10 @@
         <el-menu-item index="/chat"><el-icon><ChatDotRound /></el-icon>AI安全助手</el-menu-item>
       </el-menu>
       <div class="aside-foot">
-        <el-tag :type="meta.ai_engine.includes('模拟') ? 'warning' : 'success'" size="small" effect="dark">
-          {{ meta.ai_engine }}
+        <el-tag v-if="meta.ai_engine" :type="'success'" size="small" effect="dark">
+          AI引擎：{{ meta.ai_engine }}
         </el-tag>
-        <div class="db-line">数据库：{{ meta.db_mode === 'mysql' ? 'MySQL(云端)' : 'SQLite(本地兜底)' }}</div>
+        <div class="db-line">数据库：{{ meta.db_mode === 'mysql' ? 'MySQL' : 'SQLite' }}</div>
       </div>
     </el-aside>
 

@@ -24,6 +24,18 @@ class Settings(BaseSettings):
     token_secret: str = "zhuan-cloud-demo-secret-2026"
     token_expire_minutes: int = 4320  # 3天
 
+    # 注册验证码：邮件 SMTP（推荐 QQ/163 邮箱授权码）
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_from: str = ""
+    # 短信验证码（阿里云短信服务，可选）
+    aliyun_sms_access_key_id: str = ""
+    aliyun_sms_access_key_secret: str = ""
+    aliyun_sms_sign_name: str = ""
+    aliyun_sms_template_code: str = ""
+
     upload_dir: Path = BASE_DIR / "uploads"
     frontend_dist: Path = BASE_DIR.parent / "frontend" / "dist"
 

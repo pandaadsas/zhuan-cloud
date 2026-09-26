@@ -3,6 +3,7 @@ import { isLoggedIn } from './store'
 
 const routes = [
   { path: '/login', component: () => import('./views/Login.vue') },
+  { path: '/register', component: () => import('./views/Register.vue') },
   {
     path: '/',
     component: () => import('./views/Layout.vue'),
@@ -20,7 +21,7 @@ const routes = [
 const router = createRouter({ history: createWebHashHistory(), routes })
 
 router.beforeEach((to) => {
-  if (to.path !== '/login' && !isLoggedIn.value) return '/login'
+  if (to.path !== '/login' && to.path !== '/register' && !isLoggedIn.value) return '/login'
   if (to.path === '/login' && isLoggedIn.value) return '/dashboard'
   return true
 })

@@ -37,9 +37,22 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(50))
     role: Mapped[str] = mapped_column(String(30), index=True)
     phone: Mapped[str] = mapped_column(String(20), default="")
+    email: Mapped[str] = mapped_column(String(120), default="", index=True)
     subcontractor_id: Mapped[int | None] = mapped_column(ForeignKey("subcontractors.id"), nullable=True)
 
     subcontractor: Mapped["Subcontractor | None"] = relationship()
+
+
+class VerifyCode(Base):
+    __tablename__ = "verify_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    target: Mapped[str] = mapped_column(String(150), index=True)  # 邮箱地址或手机号
+    channel: Mapped[str] = mapped_column(String(10))  # email / sms
+    code: Mapped[str] = mapped_column(String(10))
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class Zone(Base):

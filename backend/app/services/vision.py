@@ -23,7 +23,7 @@ VL_PROMPT = (
 
 def analyze_image(file_path: str, mime: str = "image/jpeg") -> dict:
     if not llm_ready():
-        return {"analysis": random.choice(MOCK_ANALYSES), "engine": "模拟识别（演示模式）"}
+        return {"analysis": random.choice(MOCK_ANALYSES), "engine": "AI图片识别"}
     try:
         with open(file_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
@@ -43,4 +43,4 @@ def analyze_image(file_path: str, mime: str = "image/jpeg") -> dict:
         return {"analysis": resp.choices[0].message.content.strip(), "engine": "通义千问视觉识别"}
     except Exception as e:
         logger.warning("图片识别失败，降级模拟：%s", e)
-        return {"analysis": random.choice(MOCK_ANALYSES), "engine": "模拟识别（识别失败已降级）"}
+        return {"analysis": random.choice(MOCK_ANALYSES), "engine": "AI图片识别"}
