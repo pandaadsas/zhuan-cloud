@@ -76,6 +76,14 @@
           <div class="desc">{{ detail.order.rect_note }}</div>
         </template>
 
+        <template v-if="(detail.order.rect_images || []).length">
+          <div class="sec">整改照片</div>
+          <div class="imgs">
+            <el-image v-for="(u, i) in detail.order.rect_images" :key="i" :src="u"
+              :preview-src-list="detail.order.rect_images" preview-teleported fit="cover" class="rect-img" />
+          </div>
+        </template>
+
         <div v-if="actionBarVisible" class="sec">操作</div>
         <div v-if="actionBarVisible" class="actions">
           <template v-if="detail.order.status === 'pending_review' && canReview">
@@ -91,6 +99,11 @@
           </template>
           <template v-else-if="detail.order.status === 'rectifying' && isMine">
             <el-input v-model="note" type="textarea" :rows="2" placeholder="整改说明：已完成哪些整改措施" />
+            <div class="upload-hint">上传整改照片（最多6张，供安全员复查核对）：</div>
+            <el-upload v-model:file-list="rectFileList" list-type="picture-card" accept="image/*"
+              :http-request="uploadRectImage" :limit="6">
+              <el-icon><Plus /></el-icon>
+            </el-upload>
             <el-button type="primary" style="margin-top: 8px" @click="act('submit')">📤 提交复查</el-button>
           </template>
           <template v-else-if="detail.order.status === 'recheck' && canReview">
@@ -133,7 +146,19 @@ const drawer = ref(false)
 const respUsers = ref([])
 const chosenResp = ref(null)
 const note = ref('')
+const rectFileList = ref([])
 const f = reactive({ status: '', risk: '', q: '', mine: false })
+
+async function uploadRectImage(opt) {
+  const fd = new FormData()
+  fd.append('file', opt.file)
+  const data = await http.post('/api/uploads', fd)
+  opt.onSuccess(data)
+}
+
+function collectedRectImages() {
+  return rectFileList.value.map((f) => f.response?.url || f.url).filter(Boolean)
+}
 
 const role = computed(() => userStore.user?.role)
 const isOfficer = computed(() => ['safety_officer', 'safety_supervisor'].includes(role.value))
@@ -164,6 +189,7 @@ async function load() {
 
 async function openDetail(row) {
   note.value = ''
+  rectFileList.value = []
   const data = await http.get(`/api/orders/${row.id}`)
   detail.value = data
   chosenResp.value = data.order.responsible_user_id || null
@@ -175,6 +201,7 @@ async function act(action) {
     action,
     note: note.value,
     responsible_user_id: action === 'approve' ? chosenResp.value : undefined,
+    images: action === 'submit' ? collectedRectImages() : undefined,
   })
   ElMessage.success('操作成功')
   const fresh = await http.get(`/api/orders/${detail.value.order.id}`)
@@ -210,6 +237,9 @@ onMounted(async () => {
 .refs { margin-top: 8px; }
 .ref-tag { margin: 0 6px 6px 0; }
 .actions { display: flex; flex-direction: column; gap: 8px; }
+.upload-hint { font-size: 12px; color: #7a869c; }
+.imgs { display: flex; gap: 8px; flex-wrap: wrap; }
+.rect-img { width: 96px; height: 96px; border-radius: 8px; border: 1px solid #e4e9f2; }
 .ev-detail { color: #7a869c; font-size: 12px; margin-top: 2px; }
 :deep(.el-table__row) { cursor: pointer; }
 </style>

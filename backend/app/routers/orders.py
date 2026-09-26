@@ -131,7 +131,10 @@ def order_action(
         ensure(user.id == o.responsible_user_id, "仅责任人可提交复查")
         o.status = "recheck"
         o.rect_note = note or "已完成整改"
-        db.add(OrderEvent(order_id=o.id, actor=user.name, action="提交复查", detail=o.rect_note))
+        o.rect_images = payload.images or []
+        n = len(o.rect_images)
+        db.add(OrderEvent(order_id=o.id, actor=user.name, action="提交复查",
+                          detail=o.rect_note + (f"（附整改照片{n}张）" if n else "")))
 
     elif action == "pass":
         ensure(o.status == "recheck", "当前状态不可闭环")

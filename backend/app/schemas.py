@@ -15,6 +15,7 @@ class ActionIn(BaseModel):
     action: str
     note: str = ""
     responsible_user_id: int | None = None
+    images: list[str] = []  # 整改照片 URL 列表（提交复查时附带）
 
 
 class ChatIn(BaseModel):

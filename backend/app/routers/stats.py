@@ -4,60 +4,98 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..database import db_mode, get_db
 from ..models import User, WorkOrder
-from ..agents.llm import llm_ready
 from .orders import sweep_overdue
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
+
+OPEN_STATUSES = ("pending_review", "dispatched", "rectifying", "recheck")
 
 
 @router.get("/overview")
 def overview(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     sweep_overdue(db)
-    total = db.query(WorkOrder).count()
-    closed = db.query(WorkOrder).filter(WorkOrder.status == "closed").count()
-    open_orders = db.query(WorkOrder).filter(
-        WorkOrder.status.in_(("pending_review", "dispatched", "rectifying", "recheck"))
+    # 单查询聚合：避免对远程库多次串行往返（每次 ~0.4s）
+    rows = db.query(
+        WorkOrder.id,
+        WorkOrder.order_no,
+        WorkOrder.title,
+        WorkOrder.status,
+        WorkOrder.risk_level,
+        WorkOrder.hazard_type,
+        WorkOrder.overdue,
+        WorkOrder.deadline,
+        WorkOrder.created_at,
+        WorkOrder.closed_at,
+        WorkOrder.responsible_user_id,
     ).all()
-    status_counts = dict(Counter(o.status for o in db.query(WorkOrder).all()))
-    overdue = sorted([o for o in open_orders if o.overdue], key=lambda o: (o.deadline or datetime.now()))
+
+    total = len(rows)
+    status_counts = dict(Counter(r.status for r in rows))
+    closed = status_counts.get("closed", 0)
+    open_rows = [r for r in rows if r.status in OPEN_STATUSES]
+    overdue_rows = sorted(
+        [r for r in open_rows if r.overdue], key=lambda r: (r.deadline or datetime.now())
+    )
 
     today_start = datetime.combine(datetime.now().date(), datetime.min.time())
-    today_new = db.query(WorkOrder).filter(WorkOrder.created_at >= today_start).count()
 
-    trend = []
-    monday = datetime.now().date() - timedelta(days=datetime.now().date().weekday())
+    monday = (datetime.now().date() - timedelta(days=datetime.now().date().weekday()))
+    week_bins = []
     for i in range(7, -1, -1):
         ws = monday - timedelta(weeks=i)
-        we = ws + timedelta(days=7)
-        ws_dt = datetime.combine(ws, datetime.min.time())
-        we_dt = datetime.combine(we, datetime.min.time())
-        new = db.query(WorkOrder).filter(WorkOrder.created_at >= ws_dt, WorkOrder.created_at < we_dt).count()
-        done = db.query(WorkOrder).filter(WorkOrder.closed_at.isnot(None), WorkOrder.closed_at >= ws_dt, WorkOrder.closed_at < we_dt).count()
-        trend.append({"label": f"{ws.month}/{ws.day}", "new": new, "closed": done})
+        week_bins.append((ws, ws + timedelta(days=7)))
+
+    def week_index(dt: datetime):
+        d = dt.date()
+        for idx, (ws, we) in enumerate(week_bins):
+            if ws <= d < we:
+                return idx
+        return None
+
+    new_counts = [0] * len(week_bins)
+    closed_counts = [0] * len(week_bins)
+    for r in rows:
+        if r.created_at:
+            i = week_index(r.created_at)
+            if i is not None:
+                new_counts[i] += 1
+        if r.closed_at:
+            i = week_index(r.closed_at)
+            if i is not None:
+                closed_counts[i] += 1
+
+    resp_ids = {r.responsible_user_id for r in overdue_rows if r.responsible_user_id}
+    names = {}
+    if resp_ids:
+        names = {u.id: u.name for u in db.query(User).filter(User.id.in_(resp_ids)).all()}
 
     return {
         "total": total,
         "closed": closed,
         "rect_rate": f"{closed / total * 100:.1f}%" if total else "0%",
-        "today_new": today_new,
-        "open_total": len(open_orders),
-        "open_risk_counts": dict(Counter(o.risk_level for o in open_orders)),
+        "today_new": sum(1 for r in rows if r.created_at and r.created_at >= today_start),
+        "open_total": len(open_rows),
+        "open_risk_counts": dict(Counter(r.risk_level for r in open_rows)),
         "status_counts": status_counts,
-        "type_top": dict(Counter(o.hazard_type for o in db.query(WorkOrder).all()).most_common(6)),
+        "type_top": dict(Counter(r.hazard_type for r in rows).most_common(6)),
         "overdue": [
             {
-                "order_no": o.order_no,
-                "title": o.title,
-                "risk_level": o.risk_level,
-                "responsible": o.responsible_user.name if o.responsible_user else "未指定",
-                "deadline": o.deadline.strftime("%m-%d") if o.deadline else "",
+                "order_no": r.order_no,
+                "title": r.title,
+                "risk_level": r.risk_level,
+                "responsible": names.get(r.responsible_user_id, "未指定"),
+                "deadline": r.deadline.strftime("%m-%d") if r.deadline else "",
             }
-            for o in overdue[:10]
+            for r in overdue_rows[:10]
         ],
-        "trend": trend,
+        "trend": [
+            {"label": f"{ws.month}/{ws.day}", "new": new_counts[i], "closed": closed_counts[i]}
+            for i, (ws, _we) in enumerate(week_bins)
+        ],
         "meta": {
             "db_mode": db_mode(),
             "ai_engine": "通义千问" if llm_ready() else "",

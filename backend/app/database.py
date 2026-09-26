@@ -22,7 +22,7 @@ def _make_engine():
             f"@{settings.db_host}:{settings.db_port}/{settings.db_name}?charset=utf8mb4",
             pool_pre_ping=True,
             pool_recycle=1800,
-            connect_args={"connect_timeout": 6},
+            connect_args={"connect_timeout": 6, "read_timeout": 30, "write_timeout": 30},
         )
         with eng.connect():
             pass

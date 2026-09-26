@@ -106,6 +106,7 @@ class WorkOrder(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending_review", index=True)
     overdue: Mapped[bool] = mapped_column(Boolean, default=False)
     rect_note: Mapped[str] = mapped_column(Text, default="")
+    rect_images: Mapped[list | None] = mapped_column(JSON, nullable=True)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

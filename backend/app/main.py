@@ -43,11 +43,20 @@ def startup():
     db = SessionLocal()
     try:
         seeded = run_if_empty(db)
-        mode = refresh_cache(db)
+        mode = ""
+        for attempt in range(3):  # 远程库偶发网络抖动，知识库加载失败自动重试
+            try:
+                mode = refresh_cache(db)
+                break
+            except Exception as e:
+                logger.warning("知识库加载失败（第%d次）：%s", attempt + 1, e)
+                import time
+
+                time.sleep(2)
         logger.info(
             "筑安云启动完成 | 数据库=%s | 知识检索=%s | 种子数据=%s",
             db_mode(),
-            mode,
+            mode or "未就绪(可稍后重试)",
             "已初始化" if seeded else "已存在",
         )
     finally:

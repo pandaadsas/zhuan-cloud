@@ -11,6 +11,7 @@ _STATEMENTS = [
     # MySQL 与 SQLite 均支持 ADD COLUMN；列已存在时报重复列错误，忽略即可
     "ALTER TABLE users ADD COLUMN email VARCHAR(120) DEFAULT ''",
     "ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT ''",
+    "ALTER TABLE work_orders ADD COLUMN rect_images JSON",
 ]
 
 

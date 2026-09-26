@@ -59,6 +59,7 @@ def order_to_dict(o: WorkOrder, brief: bool = False) -> dict:
                 "suggestion": o.suggestion,
                 "regulation_refs": o.regulation_refs or [],
                 "rect_note": o.rect_note,
+                "rect_images": o.rect_images or [],
                 "dispatched_at": o.dispatched_at.strftime("%Y-%m-%d %H:%M") if o.dispatched_at else None,
                 "closed_at": o.closed_at.strftime("%Y-%m-%d %H:%M") if o.closed_at else None,
                 "reviewer_name": o.reviewer.name if o.reviewer else "",
