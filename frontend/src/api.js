@@ -18,7 +18,7 @@ http.interceptors.response.use(
       useUserStore().logout()
       if (!location.hash.includes('login')) location.hash = '#/login'
     }
-    ElMessage.error(String(detail))
+    if (!err.config?.silent) ElMessage.error(String(detail))
     return Promise.reject(err)
   }
 )

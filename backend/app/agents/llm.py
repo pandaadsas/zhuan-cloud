@@ -1,38 +1,44 @@
-"""LLM 抽象层：mock_mode=True 或未配置 key 时所有能力走内置模拟引擎，零 API 消耗。"""
+"""LLM 抽象层：运行时配置优先（设置页动态生效），未配置回退 .env。
+
+mock_mode=True 或未配置 key 时返回 None，调用方降级走内置模拟引擎，零 API 消耗。
+"""
 import json
 import logging
 
 from openai import OpenAI
 
-from ..config import settings
+from ..config_runtime import get_cfg
 
 logger = logging.getLogger("zhuan.llm")
 
-_client: OpenAI | None = None
+_clients: dict[str, OpenAI] = {}
 
 
-def llm_ready() -> bool:
-    return (not settings.mock_mode) and bool(settings.dashscope_api_key)
+def llm_ready(cfg=None) -> bool:
+    cfg = cfg or get_cfg()
+    return (not cfg.mock_mode) and bool(cfg.dashscope_api_key)
 
 
-def client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(
-            api_key=settings.dashscope_api_key,
+def client(cfg=None) -> OpenAI:
+    cfg = cfg or get_cfg()
+    key = cfg.dashscope_api_key
+    if key not in _clients:
+        _clients[key] = OpenAI(
+            api_key=key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             timeout=60,
         )
-    return _client
+    return _clients[key]
 
 
 def chat_json(system: str, user: str) -> dict | None:
     """真实模式调 LLM 返回 JSON；模拟模式/调用失败返回 None，调用方降级走规则逻辑。"""
-    if not llm_ready():
+    cfg = get_cfg()
+    if not llm_ready(cfg):
         return None
     try:
-        resp = client().chat.completions.create(
-            model=settings.qwen_text_model,
+        resp = client(cfg).chat.completions.create(
+            model=cfg.qwen_text_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -48,11 +54,12 @@ def chat_json(system: str, user: str) -> dict | None:
 
 def chat_text(system: str, user: str) -> str | None:
     """真实模式调 LLM 返回文本；模拟模式/调用失败返回 None。"""
-    if not llm_ready():
+    cfg = get_cfg()
+    if not llm_ready(cfg):
         return None
     try:
-        resp = client().chat.completions.create(
-            model=settings.qwen_text_model,
+        resp = client(cfg).chat.completions.create(
+            model=cfg.qwen_text_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

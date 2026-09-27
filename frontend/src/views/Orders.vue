@@ -131,8 +131,8 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ElMessage, ElNotification } from 'element-plus'
 import http from '../api'
 import { userStore } from '../store'
 
@@ -177,14 +177,28 @@ function statusType(s) {
   return { pending_review: 'warning', dispatched: 'primary', rectifying: '', recheck: 'warning', closed: 'success', rejected: 'info' }[s]
 }
 
-async function load() {
+let lastMaxId = 0
+let pollTimer = null
+
+async function load(silent = false) {
   const params = {}
   if (f.status) params.status = f.status
   if (f.risk) params.risk = f.risk
   if (f.q) params.q = f.q
   if (f.mine) params.mine = 1
-  const data = await http.get('/api/orders', { params })
+  const data = await http.get('/api/orders', { params, silent })
   orders.value = data.orders
+  const maxId = data.orders.reduce((m, o) => Math.max(m, o.id), 0)
+  if (lastMaxId && maxId > lastMaxId && data.orders.length) {
+    const fresh = data.orders.filter((o) => o.id > lastMaxId)
+    ElNotification({
+      title: '工单动态',
+      message: `新增 ${fresh.length} 条工单${fresh[0] ? '：' + fresh[0].order_no + ' ' + fresh[0].title : ''}`,
+      type: 'success',
+      duration: 4500,
+    })
+  }
+  lastMaxId = Math.max(lastMaxId, maxId)
 }
 
 async function openDetail(row) {
@@ -222,6 +236,13 @@ onMounted(async () => {
     const opt = await http.get('/api/meta/options')
     respUsers.value = opt.responsible_users
   } catch {}
+  pollTimer = setInterval(() => {
+    if (!drawer.value) load(true).catch(() => {})
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
 })
 </script>
 

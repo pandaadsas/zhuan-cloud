@@ -3,7 +3,7 @@ import base64
 import logging
 import random
 
-from ..config import settings
+from ..config_runtime import get_cfg
 from ..agents.llm import client, llm_ready
 
 logger = logging.getLogger("zhuan.vision")
@@ -22,13 +22,14 @@ VL_PROMPT = (
 
 
 def analyze_image(file_path: str, mime: str = "image/jpeg") -> dict:
-    if not llm_ready():
+    cfg = get_cfg()
+    if not llm_ready(cfg):
         return {"analysis": random.choice(MOCK_ANALYSES), "engine": "AI图片识别"}
     try:
         with open(file_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        resp = client().chat.completions.create(
-            model=settings.qwen_vl_model,
+        resp = client(cfg).chat.completions.create(
+            model=cfg.qwen_vl_model,
             messages=[
                 {
                     "role": "user",

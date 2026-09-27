@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 from .routers import auth, chat, media, meta, orders, reports, stats, weekly  # noqa: E402
+from .routers import settings as settings_router  # noqa: E402  # 避免与config.settings重名
 
 app.include_router(auth.router)
 app.include_router(meta.router)
@@ -31,6 +32,7 @@ app.include_router(orders.router)
 app.include_router(chat.router)
 app.include_router(stats.router)
 app.include_router(weekly.router)
+app.include_router(settings_router.router)
 app.include_router(media.router)
 
 app.mount("/uploads", StaticFiles(directory=str(settings.upload_dir)), name="uploads")

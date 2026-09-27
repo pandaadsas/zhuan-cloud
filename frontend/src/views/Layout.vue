@@ -14,6 +14,7 @@
         <el-menu-item index="/orders"><el-icon><Tickets /></el-icon>整改工单</el-menu-item>
         <el-menu-item v-if="canWeekly" index="/weekly"><el-icon><Document /></el-icon>安全周报</el-menu-item>
         <el-menu-item index="/chat"><el-icon><ChatDotRound /></el-icon>AI安全助手</el-menu-item>
+        <el-menu-item index="/settings"><el-icon><Setting /></el-icon>系统设置</el-menu-item>
       </el-menu>
       <div class="aside-foot">
         <el-tag v-if="meta.ai_engine" :type="'success'" size="small" effect="dark">
@@ -53,6 +54,7 @@ const titleMap = {
   '/orders': '整改工单',
   '/weekly': '安全周报',
   '/chat': 'AI安全助手',
+  '/settings': '系统设置',
 }
 
 const canReport = computed(() => ['safety_officer', 'safety_supervisor'].includes(user.value.role))

@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..models import Regulation
 from ..agents.llm import client, llm_ready
+from ..config_runtime import get_cfg
 
 logger = logging.getLogger("zhuan.rag")
 
@@ -31,13 +31,14 @@ def _bigrams(s: str) -> set[str]:
 
 
 def embed_texts(texts: list[str]) -> list[list[float]] | None:
-    if not llm_ready():
+    cfg = get_cfg()
+    if not llm_ready(cfg):
         return None
     try:
         vecs: list[list[float]] = []
         for i in range(0, len(texts), 10):  # text-embedding-v4 单批上限10条
-            resp = client().embeddings.create(
-                model=settings.qwen_embed_model, input=texts[i : i + 10]
+            resp = client(cfg).embeddings.create(
+                model=cfg.qwen_embed_model, input=texts[i : i + 10]
             )
             data = sorted(resp.data, key=lambda d: d.index)
             vecs.extend([d.embedding for d in data])

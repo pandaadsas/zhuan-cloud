@@ -14,6 +14,7 @@ const routes = [
       { path: 'orders', component: () => import('./views/Orders.vue') },
       { path: 'weekly', component: () => import('./views/Weekly.vue') },
       { path: 'chat', component: () => import('./views/Chat.vue') },
+      { path: 'settings', component: () => import('./views/Settings.vue') },
     ],
   },
 ]

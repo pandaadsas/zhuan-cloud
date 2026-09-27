@@ -47,8 +47,8 @@ class VerifyCode(Base):
     __tablename__ = "verify_codes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    target: Mapped[str] = mapped_column(String(150), index=True)  # 邮箱地址或手机号
-    channel: Mapped[str] = mapped_column(String(10))  # email / sms
+    target: Mapped[str] = mapped_column(String(150), index=True)
+    channel: Mapped[str] = mapped_column(String(10))
     code: Mapped[str] = mapped_column(String(10))
     used: Mapped[bool] = mapped_column(Boolean, default=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
@@ -75,7 +75,7 @@ class Report(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     reporter_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    input_type: Mapped[str] = mapped_column(String(10), default="text")  # text/voice/image
+    input_type: Mapped[str] = mapped_column(String(10), default="text")
     raw_text: Mapped[str] = mapped_column(Text, default="")
     transcript: Mapped[str] = mapped_column(Text, default="")
     image_path: Mapped[str] = mapped_column(String(255), default="")
@@ -96,7 +96,7 @@ class WorkOrder(Base):
     zone_id: Mapped[int | None] = mapped_column(ForeignKey("zones.id"), nullable=True)
     hazard_type: Mapped[str] = mapped_column(String(60), default="")
     description: Mapped[str] = mapped_column(Text, default="")
-    risk_level: Mapped[str] = mapped_column(String(10), default="中")  # 低/中/高/重大
+    risk_level: Mapped[str] = mapped_column(String(10), default="中")
     suggestion: Mapped[str] = mapped_column(Text, default="")
     regulation_refs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     source_type: Mapped[str] = mapped_column(String(10), default="text")
@@ -152,3 +152,11 @@ class WeeklyReport(Base):
     content_md: Mapped[str] = mapped_column(Text)
     stats_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class AppConfig(Base):
+    __tablename__ = "app_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)

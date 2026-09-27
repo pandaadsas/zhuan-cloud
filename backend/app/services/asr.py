@@ -2,7 +2,7 @@
 import logging
 import random
 
-from ..config import settings
+from ..config_runtime import get_cfg
 
 logger = logging.getLogger("zhuan.asr")
 
@@ -15,13 +15,14 @@ MOCK_TRANSCRIPTS = [
 
 
 def transcribe(file_path: str) -> dict:
-    if settings.mock_mode or not settings.dashscope_api_key:
+    cfg = get_cfg()
+    if cfg.mock_mode or not cfg.dashscope_api_key:
         return {"transcript": random.choice(MOCK_TRANSCRIPTS), "engine": "智能语音识别"}
     try:
         from dashscope import MultiModalConversation
 
         resp = MultiModalConversation.call(
-            model=settings.qwen_asr_model,
+            model=cfg.qwen_asr_model,
             messages=[{"role": "user", "content": [{"audio": f"file://{file_path}"}]}],
         )
         text = resp.output.choices[0].message.content[0]["text"]
