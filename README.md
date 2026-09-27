@@ -26,24 +26,31 @@ AI自动完成**信息抽取 → 知识库检索（规范条款）→ 风险定�
 
 ## 快速启动（本地演示）
 
+**最简方式（推荐，Windows）**：下载/克隆本仓库后，双击根目录 **`一键启动.bat`** —— 自动创建环境、安装依赖、启动服务并打开浏览器（首次约2-5分钟，之后秒开）。无需 Node、无需 MySQL、无需任何 API Key：默认使用内置模拟引擎 + 本地 SQLite 演示库，开箱即用。
+
+<details>
+<summary>手动命令行方式（macOS/Linux 或想看过程）</summary>
+
 ```bash
-# 1. 后端（首次运行自动建表+灌入演示数据）
+# 1. 后端（首次运行自动建表+灌入演示数据，数据库不可达时自动回退SQLite）
 cd backend
-python -m venv .venv                      # Python 3.12+
-.venv\Scripts\activate
+python -m venv .venv                      # Python 3.11+
+.venv\Scripts\activate                    # Windows；macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
-# 编辑 .env：填数据库连接（可先用SQLite：把DB_HOST改成一个不可达地址即自动兜底）
 python -m uvicorn app.main:app --port 8000
 
-# 2. 前端（开发模式）
-cd frontend
-npm install --registry=https://registry.npmmirror.com
-npm run dev        # http://localhost:5173
-
-# 3. 或直接访问后端托管的构建产物 http://127.0.0.1:8000
+# 2. 浏览器打开 http://127.0.0.1:8000 （前端构建产物已随仓库提供，无需Node）
+#    如需修改前端：cd frontend && npm install && npm run dev（开发模式，5173端口）
 ```
+</details>
 
-Windows下双击 `scripts/start_all.bat` 一键启动（后端+前端开发服务）。
+**接入真实 AI / 云端数据库**：复制 `backend/.env.example` 为 `backend/.env` 填入配置；或启动后在网页左侧菜单「系统设置」里直接填 API Key、选模型（保存即生效）。默认模拟引擎不消耗任何额度，断网可演示。
+
+## 队友/评委如何访问
+
+- **同一局域网**：发起人用 `一键启动.bat` 启动（已监听 0.0.0.0），队友访问 `http://发起人IP:8000`（首次启动请在 Windows 防火墙弹窗点"允许"）；局域网 IP 可用 `ipconfig` 查看
+- **公网访问**：部署到服务器，或本机用 cpolar/natapp 等内网穿透生成临时公网链接
+- **各测各的**：克隆仓库各自本地跑，AI Key 在「系统设置」页各填各的
 
 ## 演示账号（密码均为 `zhuan@123`）
 
