@@ -33,6 +33,16 @@
               </el-input>
             </el-form-item>
             <el-form-item>
+              <el-select v-model="form.role" placeholder="注册角色" size="large" style="width: 100%" @change="onRoleChange">
+                <el-option v-for="r in roles" :key="r.value" :label="r.label" :value="r.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="form.role === 'responsible'">
+              <el-select v-model="form.subcontractor_id" placeholder="所属分包单位" size="large" style="width: 100%">
+                <el-option v-for="s in subs" :key="s.id" :label="s.name" :value="s.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
               <el-input v-model="form.name" placeholder="姓名（选填）" size="large">
                 <template #prefix><el-icon><Postcard /></el-icon></template>
               </el-input>
@@ -51,14 +61,14 @@
 
       <div class="reg-foot">
         已有账号？<router-link to="/login">直接登录</router-link>
-        <span class="role-note">注册后默认为安全员角色，可上报隐患、审核工单</span>
+        <span class="role-note">选择角色后注册，自动进入对应角色的专属工作台</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onUnmounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import http from '../api'
@@ -66,10 +76,27 @@ import { setAuth, ROLE_HOME } from '../store'
 
 const router = useRouter()
 const channel = ref('email')
-const form = reactive({ email: '', code: '', username: '', name: '', password: '' })
+const form = reactive({ email: '', code: '', username: '', name: '', password: '', role: 'safety_officer', subcontractor_id: null })
+const roles = [
+  { label: '安全员（上报隐患 / 审核工单）', value: 'safety_officer' },
+  { label: '安全总监（看板 / 周报 / 重大风险复核）', value: 'safety_supervisor' },
+  { label: '项目经理（看板 / 周报）', value: 'project_manager' },
+  { label: '分包责任人（接收整改任务）', value: 'responsible' },
+]
+const subs = ref([])
 const loading = ref(false)
 const countdown = ref(0)
 let timer = null
+
+onMounted(async () => {
+  try {
+    subs.value = await http.get('/api/meta/subcontractors')
+  } catch {}
+})
+
+function onRoleChange() {
+  if (form.role !== 'responsible') form.subcontractor_id = null
+}
 
 function startCountdown() {
   countdown.value = 60
@@ -91,6 +118,9 @@ async function doRegister() {
   if (!form.email.trim() || !form.code.trim() || !form.username.trim() || !form.password) {
     return ElMessage.warning('请填写完整信息')
   }
+  if (form.role === 'responsible' && !form.subcontractor_id) {
+    return ElMessage.warning('请选择所属分包单位')
+  }
   loading.value = true
   try {
     const data = await http.post('/api/auth/register', {
@@ -100,6 +130,8 @@ async function doRegister() {
       username: form.username.trim(),
       password: form.password,
       name: form.name.trim(),
+      role: form.role,
+      subcontractor_id: form.role === 'responsible' ? form.subcontractor_id : undefined,
     })
     setAuth(data.token, data.user)
     router.push(ROLE_HOME[data.user.role] || '/dashboard')

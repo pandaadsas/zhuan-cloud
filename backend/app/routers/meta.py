@@ -6,7 +6,7 @@ from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..config import settings
 from ..database import db_mode, get_db
-from ..models import Project, User, Zone
+from ..models import Project, Subcontractor, User, Zone
 from ..serializers import STATUS_LABELS
 
 router = APIRouter(prefix="/api/meta", tags=["meta"])
@@ -38,6 +38,13 @@ def options(db: Session = Depends(get_db), user: User = Depends(get_current_user
         "risk_levels": ["低", "中", "高", "重大"],
         "statuses": STATUS_LABELS,
     }
+
+
+@router.get("/subcontractors")
+def subcontractors(db: Session = Depends(get_db)):
+    """公开接口：注册页选择分包单位用。"""
+    subs = db.query(Subcontractor).all()
+    return [{"id": s.id, "name": s.name} for s in subs]
 
 
 @router.get("/info")

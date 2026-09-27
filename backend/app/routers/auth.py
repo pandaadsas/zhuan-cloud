@@ -38,6 +38,11 @@ class RegisterIn(BaseModel):
     username: str
     password: str
     name: str = ""
+    role: str = "safety_officer"
+    subcontractor_id: int | None = None
+
+
+ALLOWED_ROLES = {"safety_officer", "safety_supervisor", "project_manager", "responsible"}
 
 
 @router.post("/login")
@@ -141,13 +146,24 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     if channel == "sms" and db.query(User).filter(User.phone == target).first():
         raise HTTPException(status_code=400, detail="该手机号已注册，请直接登录")
 
+    role = payload.role if payload.role in ALLOWED_ROLES else "safety_officer"
+    sub_id = None
+    if role == "responsible":
+        from ..models import Subcontractor
+
+        sub = db.get(Subcontractor, payload.subcontractor_id) if payload.subcontractor_id else None
+        if not sub:
+            raise HTTPException(status_code=400, detail="请选择所属分包单位")
+        sub_id = sub.id
+
     user = User(
         username=username,
         password_hash=hash_password(payload.password),
         name=payload.name.strip() or username,
-        role="safety_officer",  # 注册用户默认安全员角色，正式环境由管理员分配
+        role=role,
         email=target if channel == "email" else "",
         phone=target if channel == "sms" else "",
+        subcontractor_id=sub_id,
     )
     db.add(user)
     record.used = True
