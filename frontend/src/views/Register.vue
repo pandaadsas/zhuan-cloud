@@ -47,14 +47,6 @@
             </el-button>
           </el-form>
         </el-tab-pane>
-
-        <el-tab-pane name="sms">
-          <template #label>
-            <span>手机号注册</span>
-            <el-tag size="small" type="info" effect="plain" style="margin-left:4px">即将开通</el-tag>
-          </template>
-          <el-empty description="短信通道开通后即可使用手机号注册" :image-size="80" />
-        </el-tab-pane>
       </el-tabs>
 
       <div class="reg-foot">
@@ -91,7 +83,7 @@ onUnmounted(() => clearInterval(timer))
 async function sendCode() {
   if (!form.email.trim()) return ElMessage.warning('请先输入邮箱地址')
   await http.post('/api/auth/send-code', { channel: 'email', target: form.email.trim() })
-  ElMessage.success('验证码已发送，请查收邮件（注意垃圾箱）')
+  ElMessage.success('验证码已发送，请查收邮件')
   startCountdown()
 }
 
