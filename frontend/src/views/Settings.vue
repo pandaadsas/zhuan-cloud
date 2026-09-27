@@ -8,22 +8,19 @@
         <el-form-item label="AI 模式">
           <el-radio-group v-model="form.mock_mode">
             <el-radio-button :value="false">真实 AI（通义千问）</el-radio-button>
-            <el-radio-button :value="true">内置模拟引擎（演示兜底）</el-radio-button>
+            <el-radio-button :value="true">内置模拟引擎</el-radio-button>
           </el-radio-group>
-          <div class="hint">模拟引擎不消耗 API 额度、断网可用；正式演示请选真实 AI</div>
         </el-form-item>
 
         <el-form-item label="API Key">
           <el-input v-model="form.api_key" type="password" show-password
-            :placeholder="s.has_key ? `留空则继续使用服务器当前 Key（${s.api_key_masked}）` : '粘贴阿里云百炼 DashScope 的 Key（sk-开头）'" />
-          <div class="hint">组员各自测试时，填自己的 Key 保存即可，随时可换；当前服务器 Key：{{ s.api_key_masked || '未配置' }}</div>
+            :placeholder="s.has_key ? `留空则继续使用当前 Key（${s.api_key_masked}）` : '粘贴阿里云百炼 DashScope 的 Key（sk-开头）'" />
         </el-form-item>
 
         <el-form-item label="文本模型">
           <el-select v-model="form.text_model" filterable allow-create default-first-option style="width: 100%">
             <el-option v-for="m in ['qwen-flash', 'qwen-turbo', 'qwen-plus', 'qwen-max']" :key="m" :label="m" :value="m" />
           </el-select>
-          <div class="hint">隐患抽取、处置建议、周报撰写、AI问答（推荐 qwen-flash，便宜且快）</div>
         </el-form-item>
 
         <el-form-item label="图片识别模型">
@@ -51,10 +48,6 @@
           <el-tag v-else-if="testResult === 'fail'" type="danger" style="margin-left:10px">连接失败</el-tag>
         </el-form-item>
       </el-form>
-
-      <el-alert v-if="testError" type="error" :title="testError" :closable="false" style="margin-top: 8px" />
-      <el-alert type="info" :closable="false"
-        :title="'提示：切换 Key 后首次上报会重新校验；向量缓存按内容自动失效重算' + (savedAt ? '｜最后一次保存：' + savedAt : '')" />
     </div>
   </div>
 </template>
@@ -69,7 +62,6 @@ const form = reactive({ mock_mode: false, api_key: '', text_model: '', vl_model:
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref('')
-const testError = ref('')
 const savedAt = ref('')
 
 onMounted(load)
@@ -99,7 +91,6 @@ async function save() {
 async function testConn() {
   testing.value = true
   testResult.value = ''
-  testError.value = ''
   try {
     const r = await http.post('/api/settings/test', { api_key: form.api_key, model: form.text_model })
     if (r.ok) {
@@ -107,7 +98,6 @@ async function testConn() {
       ElMessage.success(`连接成功（${r.model} 回复：${r.reply}）`)
     } else {
       testResult.value = 'fail'
-      testError.value = r.error
     }
   } finally {
     testing.value = false
