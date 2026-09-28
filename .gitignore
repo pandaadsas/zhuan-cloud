@@ -21,3 +21,6 @@ backend/uploads/misc/*
 
 .DS_Store
 Thumbs.db
+
+# ===== PyCharm =====
+.idea
