@@ -2,7 +2,7 @@
   <div class="login-wrap">
     <div class="login-card">
       <div class="logo-row">
-        <div class="logo-badge">筑</div>
+        <BrandMark />
         <div>
           <div class="app-name">注册账号</div>
           <div class="app-sub">筑安云 · 工地安全智安协同平台</div>
@@ -11,15 +11,17 @@
 
       <el-tabs v-model="channel" class="reg-tabs">
         <el-tab-pane label="邮箱注册" name="email">
-          <el-form @keyup.enter="doRegister">
+          <el-form aria-label="注册表单" @keyup.enter="doRegister">
             <el-form-item>
-              <el-input v-model="form.email" placeholder="邮箱地址" size="large">
+              <label class="field-label" for="reg-email">邮箱地址</label>
+              <el-input id="reg-email" v-model="form.email" autocomplete="email" placeholder="用于接收验证码" size="large">
                 <template #prefix><el-icon><Message /></el-icon></template>
               </el-input>
             </el-form-item>
             <el-form-item>
+              <label class="field-label" for="reg-code">邮箱验证码</label>
               <div class="code-row">
-                <el-input v-model="form.code" placeholder="验证码" size="large" maxlength="6">
+                <el-input id="reg-code" v-model="form.code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" size="large" maxlength="6">
                   <template #prefix><el-icon><Key /></el-icon></template>
                 </el-input>
                 <el-button size="large" :disabled="countdown > 0" @click="sendCode">
@@ -28,27 +30,32 @@
               </div>
             </el-form-item>
             <el-form-item>
-              <el-input v-model="form.username" placeholder="账号（3-30位字母/数字/下划线）" size="large">
+              <label class="field-label" for="reg-username">登录账号</label>
+              <el-input id="reg-username" v-model="form.username" autocomplete="username" placeholder="3-30 位字母、数字或下划线" size="large">
                 <template #prefix><el-icon><User /></el-icon></template>
               </el-input>
             </el-form-item>
             <el-form-item>
-              <el-select v-model="form.role" placeholder="注册角色" size="large" style="width: 100%" @change="onRoleChange">
+              <label class="field-label" for="reg-role">工作角色</label>
+              <el-select id="reg-role" v-model="form.role" placeholder="注册角色" size="large" style="width: 100%" @change="onRoleChange">
                 <el-option v-for="r in roles" :key="r.value" :label="r.label" :value="r.value" />
               </el-select>
             </el-form-item>
             <el-form-item v-if="form.role === 'responsible'">
+              <label class="field-label">所属分包单位</label>
               <el-select v-model="form.subcontractor_id" placeholder="所属分包单位" size="large" style="width: 100%">
                 <el-option v-for="s in subs" :key="s.id" :label="s.name" :value="s.id" />
               </el-select>
             </el-form-item>
             <el-form-item>
-              <el-input v-model="form.name" placeholder="姓名（选填）" size="large">
+              <label class="field-label" for="reg-name">姓名 <span class="optional">选填</span></label>
+              <el-input id="reg-name" v-model="form.name" autocomplete="name" placeholder="请输入姓名" size="large">
                 <template #prefix><el-icon><Postcard /></el-icon></template>
               </el-input>
             </el-form-item>
             <el-form-item>
-              <el-input v-model="form.password" type="password" show-password placeholder="密码（至少6位）" size="large">
+              <label class="field-label" for="reg-password">密码</label>
+              <el-input id="reg-password" v-model="form.password" type="password" autocomplete="new-password" show-password placeholder="至少 6 位" size="large">
                 <template #prefix><el-icon><Lock /></el-icon></template>
               </el-input>
             </el-form-item>
@@ -73,6 +80,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import http from '../api'
 import { setAuth, ROLE_HOME } from '../store'
+import BrandMark from '../components/BrandMark.vue'
 
 const router = useRouter()
 const channel = ref('email')
@@ -144,6 +152,8 @@ async function doRegister() {
 <style scoped src="../views/login-style.css"></style>
 <style scoped>
 .reg-tabs { margin-top: 8px; }
+.el-form-item { display: block; }
+.optional { color: #929db0; font-weight: 400; }
 .code-row { display: flex; gap: 10px; width: 100%; }
 .code-row .el-button { width: 130px; }
 .reg-foot { margin-top: 14px; font-size: 13px; color: #5a6a8a; text-align: center; }

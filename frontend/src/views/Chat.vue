@@ -1,9 +1,15 @@
 <template>
-  <div>
-    <div class="page-title">AI安全助手</div>
-    <div class="page-sub">自然语言查进度、查统计、问规范条款、一键生成周报</div>
+  <div class="page-shell">
+    <div class="page-intro">
+      <div class="page-title">现场安全智询</div>
+      <div class="page-sub">查询工单进度、治理统计和规范条款，也可以直接生成安全周报。</div>
+    </div>
 
-    <div class="card">
+    <div class="card chat-card">
+      <div class="assistant-head">
+        <div class="assistant-avatar"><el-icon><Service /></el-icon></div>
+        <div><strong>筑安云 AI 助手</strong><small><i></i>在线服务</small></div>
+      </div>
       <div class="chat-box" ref="boxEl">
         <div v-for="(m, i) in messages" :key="i" class="msg" :class="{ me: m.me }">
           <div class="bubble">
@@ -11,16 +17,18 @@
             <div v-else class="md-body" v-html="m.html"></div>
           </div>
         </div>
+        <div v-if="sending" class="msg"><div class="bubble typing" aria-label="AI 正在思考"><i></i><i></i><i></i></div></div>
       </div>
 
       <div class="quick">
+        <span>快捷提问</span>
         <el-button v-for="q in quick" :key="q" size="small" round plain @click="send(q)">{{ q }}</el-button>
       </div>
 
       <div class="input-row">
-        <el-input v-model="input" placeholder="试试：3号楼12层的隐患整改到哪一步了？" size="large" @keyup.enter="send()">
+        <el-input v-model="input" aria-label="向 AI 安全助手提问" placeholder="输入问题，例如：3号楼12层的隐患整改到哪一步了？" size="large" @keydown.enter.exact.prevent="send()">
           <template #append>
-            <el-button type="primary" :loading="sending" @click="send()">发送</el-button>
+            <el-button type="primary" :disabled="!input.trim() || sending" aria-label="发送问题" @click="send()"><el-icon><Position /></el-icon><span>发送</span></el-button>
           </template>
         </el-input>
       </div>
@@ -41,7 +49,7 @@ const messages = ref([
   {
     me: false,
     html: marked.parse(
-      '您好，我是筑安云AI安全助手 🤖\n\n可以帮我：\n- 查工单进度（如：3号楼12层的隐患进度）\n- 查统计（如：本周整改情况）\n- 答规范问题（如：临边防护有什么要求）\n- 生成安全周报（安全员/总监/项目经理）'
+      '您好，我是筑安云 AI 安全助手。\n\n我可以帮你：\n- 查询工单处置进度\n- 汇总本周整改情况\n- 检索现场安全规范\n- 生成项目安全周报'
     ),
   },
 ])
@@ -72,6 +80,24 @@ async function send(preset) {
 </script>
 
 <style scoped>
-.quick { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
-.input-row { margin-top: 4px; }
+.chat-card { padding: 0; overflow: hidden; }
+.assistant-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--zhuan-line); }
+.assistant-avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: #fff; background: linear-gradient(145deg, var(--zhuan-blue), #4d7be2); }
+.assistant-head strong, .assistant-head small { display: block; }
+.assistant-head strong { font-size: 13px; }
+.assistant-head small { margin-top: 2px; color: var(--zhuan-muted); font-size: 10px; }
+.assistant-head small i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #35a873; }
+.chat-box { border: 0; border-radius: 0; }
+.quick { display: flex; align-items: center; gap: 8px; padding: 11px 16px 7px; flex-wrap: wrap; border-top: 1px solid var(--zhuan-line); }
+.quick > span { margin-right: 2px; color: var(--zhuan-muted); font-size: 11px; }
+.input-row { padding: 6px 16px 16px; }
+.typing { display: flex; gap: 4px; padding: 15px 17px; }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: #91a0b8; animation: typing 1s ease-in-out infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+@media (max-width: 600px) {
+  .quick { flex-wrap: nowrap; overflow-x: auto; }
+  .quick > * { flex: 0 0 auto; }
+  .input-row :deep(.el-input-group__append span) { display: none; }
+}
 </style>

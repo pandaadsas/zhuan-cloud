@@ -1,19 +1,25 @@
 <template>
-  <div>
-    <div class="page-title">隐患上报</div>
-    <div class="page-sub">上报后AI自动完成：信息抽取 → 知识库检索 → 风险定级 → 责任人匹配 → 生成待审核工单</div>
+  <div class="page-shell">
+    <div class="workflow">
+      <div class="workflow-copy"><span class="eyebrow">AI 辅助处置</span><strong>描述现场情况，其余交给筑安云</strong><small>自动提取信息、检索规范、评估风险并匹配责任人</small></div>
+      <div class="workflow-steps"><span v-for="(step, i) in ['上报', '分析', '派单', '闭环']" :key="step"><i>{{ i + 1 }}</i>{{ step }}</span></div>
+    </div>
 
     <div class="card">
       <el-tabs v-model="tab">
-        <el-tab-pane label="⌨️ 文字上报" name="text">
+        <el-tab-pane name="text">
+          <template #label><span class="tab-label"><el-icon><EditPen /></el-icon>文字上报</span></template>
+          <label class="input-label" for="hazard-text">隐患描述</label>
           <el-input v-model="form.text" type="textarea" :rows="5" maxlength="200" show-word-limit
+            id="hazard-text"
             placeholder="描述发现的隐患，例：3号楼12层东侧临边防护栏杆缺失，旁边有工人在作业" />
           <div class="examples">
             <el-button v-for="(e, i) in examples" :key="i" size="small" round @click="form.text = e">{{ e.slice(0, 18) }}…</el-button>
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="🎙️ 语音上报" name="voice">
+        <el-tab-pane name="voice">
+          <template #label><span class="tab-label"><el-icon><Microphone /></el-icon>语音上报</span></template>
           <div class="voice-box">
             <el-button :type="recording ? 'danger' : 'primary'" size="large" circle @click="toggleRec">
               <el-icon :size="26"><Microphone /></el-icon>
@@ -31,10 +37,11 @@
           <el-input v-model="form.text" type="textarea" :rows="4" placeholder="语音转写结果（可修改）" />
         </el-tab-pane>
 
-        <el-tab-pane label="📷 图片上报" name="image">
-          <el-upload drag :show-file-list="false" accept="image/*" :http-request="uploadImage">
+        <el-tab-pane name="image">
+          <template #label><span class="tab-label"><el-icon><Picture /></el-icon>图片上报</span></template>
+          <el-upload drag :show-file-list="false" accept="image/*" :http-request="uploadImage" :disabled="uploading">
             <el-icon :size="40" color="#8fa3d0"><UploadFilled /></el-icon>
-            <div class="el-upload__text">拍摄或上传隐患照片，AI自动识别隐患</div>
+            <div class="el-upload__text">{{ uploading ? '正在识别图片…' : '拍摄或上传隐患照片，AI 自动识别隐患' }}</div>
           </el-upload>
           <div v-if="imageEngine" class="engine-note">识别引擎：{{ imageEngine }}</div>
           <el-input v-model="form.text" type="textarea" :rows="4" placeholder="AI识别结果（可修改补充后提交）" />
@@ -43,7 +50,7 @@
 
       <div class="submit-row">
         <el-button type="primary" size="large" :loading="submitting" :disabled="!form.text.trim()" @click="submit">
-          ⚡ 上报并生成整改工单
+          <el-icon><Promotion /></el-icon>上报并生成整改工单
         </el-button>
       </div>
     </div>
@@ -71,7 +78,7 @@
           :description="r.match_reason" show-icon />
 
         <div class="mt regs">
-          <div class="regs-title">📖 检索到的规范条款</div>
+          <div class="regs-title"><el-icon><Reading /></el-icon>检索到的规范条款</div>
           <div v-for="(ref, i) in r.order?.regulation_refs || []" :key="i" class="reg-item">
             《{{ ref.doc_name }}》{{ ref.clause_no }} {{ ref.title }}
           </div>
@@ -84,7 +91,7 @@
       </template>
       <template #footer>
         <el-button @click="showResult = false">继续上报</el-button>
-        <el-button type="primary" @click="$router.push('/orders'); showResult = false">前往审核 →</el-button>
+        <el-button type="primary" @click="$router.push('/orders'); showResult = false">前往审核<el-icon><ArrowRight /></el-icon></el-button>
       </template>
     </el-dialog>
   </div>
@@ -103,6 +110,7 @@ const r = ref(null)
 const recording = ref(false)
 const asrEngine = ref('')
 const imageEngine = ref('')
+const uploading = ref(false)
 
 const examples = [
   '3号楼12层东侧临边防护栏杆缺失，旁边有工人在进行二次结构作业',
@@ -148,12 +156,20 @@ async function toggleRec() {
 }
 
 async function uploadImage(opt) {
+  uploading.value = true
   const fd = new FormData()
   fd.append('file', opt.file)
-  const data = await http.post('/api/vision', fd)
-  form.text = data.analysis
-  imageEngine.value = data.engine
-  ElMessage.success('图片隐患识别完成，可修改后提交')
+  try {
+    const data = await http.post('/api/vision', fd)
+    form.text = data.analysis
+    imageEngine.value = data.engine
+    opt.onSuccess(data)
+    ElMessage.success('图片隐患识别完成，可修改后提交')
+  } catch (err) {
+    opt.onError(err)
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function submit() {
@@ -179,6 +195,17 @@ async function submit() {
 </script>
 
 <style scoped>
+.workflow { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 16px; padding: 18px 20px; overflow: hidden; border-radius: 14px; color: #fff; background: linear-gradient(115deg, #102958, #2459d3); box-shadow: 0 12px 28px rgba(24,61,143,.17); }
+.workflow-copy { display: grid; gap: 3px; }
+.workflow-copy strong { font-size: 17px; }
+.workflow-copy small { color: #c3d1ed; font-size: 12px; }
+.eyebrow { color: #f7bd4e; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.workflow-steps { display: flex; align-items: center; gap: 18px; }
+.workflow-steps span { position: relative; display: flex; align-items: center; gap: 6px; color: #d9e3f8; font-size: 12px; white-space: nowrap; }
+.workflow-steps span:not(:last-child)::after { content: ""; position: absolute; left: calc(100% + 5px); width: 8px; height: 1px; background: rgba(255,255,255,.32); }
+.workflow-steps i { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid rgba(255,255,255,.36); border-radius: 50%; color: #fff; font-style: normal; font-size: 10px; }
+.tab-label { display: inline-flex; align-items: center; gap: 6px; }
+.input-label { display: block; margin-bottom: 8px; color: #39465d; font-size: 12px; font-weight: 650; }
 .examples { margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .demo-label { color: #7a869c; font-size: 12px; }
 .voice-box { display: flex; align-items: center; gap: 16px; padding: 8px 0 16px; }
@@ -187,7 +214,15 @@ async function submit() {
 .submit-row { margin-top: 16px; text-align: right; }
 .steps { margin-bottom: 8px; }
 .mt { margin-top: 14px; }
-.regs-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.regs-title { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
 .reg-item { font-size: 12px; color: #4a5a7a; padding: 3px 0; border-bottom: 1px dashed #edf1f7; }
 .suggestion { background: #f7f9fc; border-radius: 8px; padding: 12px; font-size: 13px; white-space: pre-wrap; line-height: 1.7; }
+@media (max-width: 760px) {
+  .workflow { align-items: flex-start; flex-direction: column; padding: 16px; }
+  .workflow-steps { width: 100%; justify-content: space-between; gap: 6px; }
+  .workflow-steps span { flex-direction: column; }
+  .workflow-steps span:not(:last-child)::after { left: calc(100% - 1px); top: 11px; width: calc(25vw - 30px); }
+  .submit-row .el-button { width: 100%; }
+  .steps { overflow-x: auto; padding-bottom: 8px; }
+}
 </style>

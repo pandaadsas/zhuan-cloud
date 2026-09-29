@@ -1,7 +1,9 @@
 <template>
-  <div>
-    <div class="page-title">整改工单</div>
-    <div class="page-sub">工单状态机：待审核 → 已派发 → 整改中 → 待复查 → 已闭环（可驳回/退回/延期，超期自动预警）</div>
+  <div class="page-shell">
+    <div class="page-intro">
+      <div class="page-title">工单闭环管理</div>
+      <div class="page-sub">筛选、跟进并完成隐患处置；超期工单将自动标记提醒。</div>
+    </div>
 
     <div class="card">
       <div class="filters">
@@ -14,11 +16,15 @@
         <el-input v-model="f.q" placeholder="搜索工单号/标题/描述" clearable style="width: 220px" @keyup.enter="load" @clear="load" />
         <el-button type="primary" plain @click="load">查询</el-button>
         <el-checkbox v-if="isOfficer" v-model="f.mine" label="只看我上报的" @change="load" />
-        <span style="flex: 1"></span>
+        <span class="filter-spacer"></span>
         <el-tag effect="plain">共 {{ orders.length }} 单</el-tag>
       </div>
 
-      <el-table :data="orders" size="small" stripe @row-click="openDetail" highlight-current-row>
+      <div v-if="error && !loading" class="error-state compact-error">
+        <div><el-icon><WarningFilled /></el-icon><div class="error-title">工单列表加载失败</div><div class="error-copy">请稍后重试。</div><el-button type="primary" @click="load()">重新加载</el-button></div>
+      </div>
+      <div v-else class="table-wrap">
+      <el-table v-loading="loading" :data="orders" size="small" @row-click="openDetail" highlight-current-row>
         <el-table-column prop="order_no" label="工单号" width="140" />
         <el-table-column prop="title" label="隐患标题" min-width="230" show-overflow-tooltip />
         <el-table-column prop="risk_level" label="风险" width="80">
@@ -39,11 +45,17 @@
         <el-table-column prop="source_label" label="来源" width="70">
           <template #default="{ row }">{{ { text: '文字', voice: '语音', image: '图片' }[row.source_type] }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="78" fixed="right">
+          <template #default="{ row }"><el-button link type="primary" @click.stop="openDetail(row)">查看</el-button></template>
+        </el-table-column>
+        <template #empty><el-empty :image-size="72" description="没有符合条件的工单" /></template>
       </el-table>
+      </div>
     </div>
 
-    <el-drawer v-model="drawer" :title="detail?.order?.order_no" size="560px">
-      <template v-if="detail">
+    <el-drawer v-model="drawer" :title="detail?.order?.order_no || '工单详情'" size="min(560px, 100%)">
+      <el-skeleton v-if="detailLoading" :rows="10" animated />
+      <template v-else-if="detail">
         <div class="d-title">{{ detail.order.title }}</div>
         <div class="d-tags">
           <el-tag type="danger" effect="dark" size="small">{{ detail.order.risk_level }}风险</el-tag>
@@ -91,11 +103,11 @@
               <el-option v-for="u in respUsers" :key="u.id" :label="u.name + '（' + u.subcontractor + '）'" :value="u.id" />
             </el-select>
             <el-input v-model="note" placeholder="审核备注（可空）" style="width: 200px" />
-            <el-button type="primary" @click="act('approve')">✅ 审核通过并派单</el-button>
+            <el-button type="primary" @click="act('approve')"><el-icon><Select /></el-icon>审核通过并派单</el-button>
             <el-button type="danger" plain @click="act('reject')">驳回</el-button>
           </template>
           <template v-else-if="detail.order.status === 'dispatched' && isMine">
-            <el-button type="primary" @click="act('start')">🔧 开始整改</el-button>
+            <el-button type="primary" @click="act('start')"><el-icon><Tools /></el-icon>开始整改</el-button>
           </template>
           <template v-else-if="detail.order.status === 'rectifying' && isMine">
             <el-input v-model="note" type="textarea" :rows="2" placeholder="整改说明：已完成哪些整改措施" />
@@ -104,17 +116,17 @@
               :http-request="uploadRectImage" :limit="6">
               <el-icon><Plus /></el-icon>
             </el-upload>
-            <el-button type="primary" style="margin-top: 8px" @click="act('submit')">📤 提交复查</el-button>
+            <el-button type="primary" style="margin-top: 8px" @click="act('submit')"><el-icon><Upload /></el-icon>提交复查</el-button>
           </template>
           <template v-else-if="detail.order.status === 'recheck' && canReview">
             <el-input v-model="note" placeholder="复查意见（可空）" />
             <div style="margin-top: 8px; display: flex; gap: 8px">
-              <el-button type="success" @click="act('pass')">✅ 复查合格·闭环</el-button>
+              <el-button type="success" @click="act('pass')"><el-icon><CircleCheck /></el-icon>复查合格·闭环</el-button>
               <el-button type="warning" plain @click="act('fail_recheck')">不合格·退回整改</el-button>
             </div>
           </template>
           <template v-if="canReview && ['dispatched', 'rectifying'].includes(detail.order.status)">
-            <el-button plain type="info" @click="act('extend')">⏰ 延期2天</el-button>
+            <el-button plain type="info" @click="act('extend')"><el-icon><Clock /></el-icon>延期 2 天</el-button>
           </template>
         </div>
 
@@ -147,6 +159,9 @@ const respUsers = ref([])
 const chosenResp = ref(null)
 const note = ref('')
 const rectFileList = ref([])
+const loading = ref(true)
+const error = ref(false)
+const detailLoading = ref(false)
 const f = reactive({ status: '', risk: '', q: '', mine: false })
 
 async function uploadRectImage(opt) {
@@ -181,33 +196,45 @@ let lastMaxId = 0
 let pollTimer = null
 
 async function load(silent = false) {
+  if (!silent) {
+    loading.value = true
+    error.value = false
+  }
   const params = {}
   if (f.status) params.status = f.status
   if (f.risk) params.risk = f.risk
   if (f.q) params.q = f.q
   if (f.mine) params.mine = 1
-  const data = await http.get('/api/orders', { params, silent })
-  orders.value = data.orders
-  const maxId = data.orders.reduce((m, o) => Math.max(m, o.id), 0)
-  if (lastMaxId && maxId > lastMaxId && data.orders.length) {
-    const fresh = data.orders.filter((o) => o.id > lastMaxId)
-    ElNotification({
-      title: '工单动态',
-      message: `新增 ${fresh.length} 条工单${fresh[0] ? '：' + fresh[0].order_no + ' ' + fresh[0].title : ''}`,
-      type: 'success',
-      duration: 4500,
-    })
+  try {
+    const data = await http.get('/api/orders', { params, silent })
+    orders.value = data.orders
+    const maxId = data.orders.reduce((m, o) => Math.max(m, o.id), 0)
+    if (lastMaxId && maxId > lastMaxId && data.orders.length) {
+      const fresh = data.orders.filter((o) => o.id > lastMaxId)
+      ElNotification({ title: '工单动态', message: `新增 ${fresh.length} 条工单${fresh[0] ? '：' + fresh[0].order_no + ' ' + fresh[0].title : ''}`, type: 'success', duration: 4500 })
+    }
+    lastMaxId = Math.max(lastMaxId, maxId)
+  } catch (err) {
+    if (!silent) error.value = true
+    throw err
+  } finally {
+    if (!silent) loading.value = false
   }
-  lastMaxId = Math.max(lastMaxId, maxId)
 }
 
 async function openDetail(row) {
   note.value = ''
   rectFileList.value = []
-  const data = await http.get(`/api/orders/${row.id}`)
-  detail.value = data
-  chosenResp.value = data.order.responsible_user_id || null
   drawer.value = true
+  detail.value = null
+  detailLoading.value = true
+  try {
+    const data = await http.get(`/api/orders/${row.id}`)
+    detail.value = data
+    chosenResp.value = data.order.responsible_user_id || null
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 async function act(action) {
@@ -248,6 +275,9 @@ onUnmounted(() => {
 
 <style scoped>
 .filters { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-spacer { flex: 1; }
+.table-wrap { overflow-x: auto; }
+.compact-error { min-height: 300px; }
 .overdue-txt { color: #f56c6c; font-weight: 700; }
 .d-title { font-size: 17px; font-weight: 700; }
 .d-tags { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
@@ -263,4 +293,11 @@ onUnmounted(() => {
 .rect-img { width: 96px; height: 96px; border-radius: 8px; border: 1px solid #e4e9f2; }
 .ev-detail { color: #7a869c; font-size: 12px; margin-top: 2px; }
 :deep(.el-table__row) { cursor: pointer; }
+@media (max-width: 760px) {
+  .filters > .el-select, .filters > .el-input { width: calc(50% - 5px) !important; }
+  .filters > .el-input { width: 100% !important; }
+  .filter-spacer { display: none; }
+  :deep(.el-table) { min-width: 760px; }
+  :deep(.el-drawer__body) { padding: 14px; }
+}
 </style>
