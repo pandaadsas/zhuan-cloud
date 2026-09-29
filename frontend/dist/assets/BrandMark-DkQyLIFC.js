@@ -1,1 +1,0 @@
-import{_ as o,o as s,c as n,a as r,I as c}from"./index-CkGHJEdB.js";const t={__name:"BrandMark",props:{compact:Boolean},setup(e){return(l,a)=>(s(),n("div",{class:c(["brand-mark",{compact:e.compact}]),"aria-hidden":"true"},[...a[0]||(a[0]=[r("span",null,"筑",-1),r("i",null,null,-1)])],2))}},m=o(t,[["__scopeId","data-v-ca17101f"]]);export{m as B};
