@@ -47,7 +47,7 @@ def _route_after_extract(state: PipelineState) -> str:
     return "clarify" if need_clarify(state["extracted"]) else "retrieve"
 
 
-def build_pipeline(db: Session):
+def build_pipeline(db: Session, project_id: int | None = None):
     def node_retrieve(state: PipelineState) -> PipelineState:
         return {"regs": kb_search(db, state["raw_text"], k=4)}
 
@@ -58,7 +58,7 @@ def build_pipeline(db: Session):
         return {"risk": risk, "extracted": extracted, "suggestion": suggestion}
 
     def node_dispatch(state: PipelineState) -> PipelineState:
-        return {"responsible": match_responsible(db, state["extracted"])}
+        return {"responsible": match_responsible(db, state["extracted"], project_id=project_id)}
 
     def node_draft(state: PipelineState) -> PipelineState:
         ext, resp = state["extracted"], state["responsible"]
@@ -109,9 +109,9 @@ def build_pipeline(db: Session):
     return g.compile()
 
 
-def process_report(db: Session, raw_text: str, source_type: str = "text") -> dict:
+def process_report(db: Session, raw_text: str, source_type: str = "text", project_id: int | None = None) -> dict:
     """跑完整流水线，返回结果（不落库，由路由层持久化）。"""
-    app = build_pipeline(db)
+    app = build_pipeline(db, project_id=project_id)
     final = app.invoke({"raw_text": raw_text, "source_type": source_type})
     return {
         "need_clarify": final.get("need_clarify", False),

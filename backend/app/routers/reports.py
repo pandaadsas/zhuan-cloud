@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..agents.graph import process_report
 from ..auth import get_current_user, require_roles
 from ..database import get_db
+from ..deps import get_current_project
 from ..models import Report, User, WorkOrder, Zone
 from ..schemas import ReportIn
 from ..serializers import order_to_dict
@@ -26,8 +27,10 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
     if len(text) < 5:
         raise HTTPException(status_code=400, detail="请描述隐患内容（至少5个字），如：3号楼12层临边防护缺失")
 
-    result = process_report(db, text, payload.input_type)
+    project = get_current_project(db)
+    result = process_report(db, text, payload.input_type, project_id=project.id)
     report = Report(
+        project_id=project.id,
         reporter_id=user.id,
         input_type=payload.input_type,
         raw_text=text,
@@ -48,9 +51,14 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
     draft = result["order_draft"]
     zone = None
     if draft["building"]:
-        zone = db.query(Zone).filter(Zone.name.like(f"%{draft['building']}%")).first()
+        zone = (
+            db.query(Zone)
+            .filter(Zone.project_id == project.id, Zone.name.like(f"%{draft['building']}%"))
+            .first()
+        )
     order = WorkOrder(
         order_no=gen_order_no(db),
+        project_id=project.id,
         report_id=report.id,
         title=draft["title"],
         building=draft["building"],

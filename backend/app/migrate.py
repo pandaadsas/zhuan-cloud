@@ -12,7 +12,16 @@ _STATEMENTS = [
     "ALTER TABLE users ADD COLUMN email VARCHAR(120) DEFAULT ''",
     "ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT ''",
     "ALTER TABLE work_orders ADD COLUMN rect_images JSON",
+    # 项目归属外键（方案：业务数据挂到 projects 下，列可空以兼容存量）
+    "ALTER TABLE subcontractors ADD COLUMN project_id INT NULL",
+    "ALTER TABLE zones ADD COLUMN project_id INT NULL",
+    "ALTER TABLE reports ADD COLUMN project_id INT NULL",
+    "ALTER TABLE work_orders ADD COLUMN project_id INT NULL",
+    "ALTER TABLE weekly_reports ADD COLUMN project_id INT NULL",
 ]
+
+# 存量数据回填到唯一项目；WHERE 过滤保证重复执行无副作用
+_BACKFILL_TABLES = ["subcontractors", "zones", "reports", "work_orders", "weekly_reports"]
 
 
 def run_migrations():
@@ -22,6 +31,18 @@ def run_migrations():
                 conn.execute(text(sql))
             except Exception as e:
                 logger.debug("迁移跳过：%s（%s）", sql.split("TABLE ")[1].split(" ADD")[0], str(e)[:60])
+
+        # 把还没有项目归属的业务数据挂到第一个项目上
+        for table in _BACKFILL_TABLES:
+            try:
+                conn.execute(
+                    text(
+                        f"UPDATE {table} SET project_id = (SELECT id FROM projects LIMIT 1) "
+                        "WHERE project_id IS NULL"
+                    )
+                )
+            except Exception as e:
+                logger.warning("回填 %s 失败（不影响运行）：%s", table, e)
 
         # 清理历史数据中的旧版"演示"标注（正式版不展示）
         try:

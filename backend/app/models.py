@@ -33,6 +33,7 @@ class Subcontractor(Base):
     """分包单位。
 
     字段说明:
+        project_id: 所属项目，可空（兼容历史数据）
         name: 单位名称
         scope: 承包范围
         leader_name: 负责人姓名
@@ -42,6 +43,7 @@ class Subcontractor(Base):
     __tablename__ = "subcontractors"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     scope: Mapped[str] = mapped_column(String(200), default="")
     leader_name: Mapped[str] = mapped_column(String(50), default="")
@@ -103,17 +105,20 @@ class Zone(Base):
     """施工区域/楼栋。
 
     字段说明:
+        project_id: 所属项目，可空（兼容历史数据）
         name: 区域名称
         zone_type: 区域类型
         floor_count: 楼层数
         current_stage: 当前施工阶段
         subcontractor_id: 负责施工的分包单位，可空
         responsible_user_id: 责任人用户，可空
+        project: 所属项目关系
     """
 
     __tablename__ = "zones"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(60), index=True)
     zone_type: Mapped[str] = mapped_column(String(40), default="")
     floor_count: Mapped[int] = mapped_column(default=0)
@@ -121,6 +126,7 @@ class Zone(Base):
     subcontractor_id: Mapped[int | None] = mapped_column(ForeignKey("subcontractors.id"), nullable=True)
     responsible_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
+    project: Mapped["Project | None"] = relationship()
     subcontractor: Mapped["Subcontractor | None"] = relationship()
     responsible_user: Mapped["User | None"] = relationship(foreign_keys=[responsible_user_id])
 
@@ -129,6 +135,7 @@ class Report(Base):
     """隐患上报原始记录。
 
     字段说明:
+        project_id: 所属项目，可空（兼容历史数据）
         reporter_id: 上报人用户，可空（匿名上报）
         input_type: 输入类型（text/voice/image）
         raw_text: 原始文本内容
@@ -141,6 +148,7 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     reporter_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     input_type: Mapped[str] = mapped_column(String(10), default="text")
     raw_text: Mapped[str] = mapped_column(Text, default="")
@@ -155,6 +163,7 @@ class WorkOrder(Base):
 
     字段说明:
         order_no: 工单编号（唯一）
+        project_id: 所属项目，可空（兼容历史数据）
         report_id: 来源上报记录，可空
         title: 工单标题
         building: 楼栋
@@ -180,6 +189,7 @@ class WorkOrder(Base):
         updated_at: 更新时间（自动维护）
 
     关联关系:
+        project: 所属项目
         responsible_user / reviewer: 责任人与审核人用户
         zone: 所属区域
         events: 工单流转事件列表（OrderEvent）
@@ -188,6 +198,7 @@ class WorkOrder(Base):
     __tablename__ = "work_orders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     order_no: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     report_id: Mapped[int | None] = mapped_column(ForeignKey("reports.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(120))
@@ -215,6 +226,7 @@ class WorkOrder(Base):
 
     responsible_user: Mapped["User | None"] = relationship(foreign_keys=[responsible_user_id])
     reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewer_id])
+    project: Mapped["Project | None"] = relationship()
     zone: Mapped["Zone | None"] = relationship()
     events: Mapped[list["OrderEvent"]] = relationship(back_populates="order")
 
@@ -270,6 +282,7 @@ class WeeklyReport(Base):
     """安全周报。
 
     字段说明:
+        project_id: 所属项目，可空（兼容历史数据）
         week_start: 周起始日期
         week_end: 周结束日期
         content_md: 周报正文（Markdown 格式）
@@ -280,6 +293,7 @@ class WeeklyReport(Base):
     __tablename__ = "weekly_reports"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     week_start: Mapped[datetime] = mapped_column(Date)
     week_end: Mapped[datetime] = mapped_column(Date)
     content_md: Mapped[str] = mapped_column(Text)

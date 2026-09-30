@@ -50,24 +50,24 @@ def _seed_all(db: Session):
     rng = random.Random(42)
     now = datetime.now()
 
-    db.add(
-        Project(
-            name="三河市保障性租赁住房项目",
-            location="河北省三河市",
-            total_area="147,536.8㎡",
-            scale_desc="12栋一类高层住宅及10栋多层公共建筑，总建筑面积约14.75万㎡",
-            current_stage="主体结构 + 二次结构",
-            note="演示背景项目：源自全国公共资源交易平台公开信息，承接单位与人员均为虚构。",
-        )
+    project = Project(
+        name="三河市保障性租赁住房项目",
+        location="河北省三河市",
+        total_area="147,536.8㎡",
+        scale_desc="12栋一类高层住宅及10栋多层公共建筑，总建筑面积约14.75万㎡",
+        current_stage="主体结构 + 二次结构",
+        note="演示背景项目：源自全国公共资源交易平台公开信息，承接单位与人员均为虚构。",
     )
+    db.add(project)
+    db.flush()
 
     subs = {
-        "huayu": Subcontractor(name="华宇建筑劳务有限公司", scope="主体结构、二次结构、脚手架劳务作业（1-2号楼责任区）", leader_name="刘伟", leader_phone="13800000001"),
-        "hengsheng": Subcontractor(name="恒盛建筑劳务有限公司", scope="主体结构、模板支撑劳务作业（3-6号楼责任区）", leader_name="赵强", leader_phone="13800000002"),
-        "zhongan": Subcontractor(name="中安机电安装工程有限公司", scope="机电安装工程及现场临时用电维护", leader_name="陈志明", leader_phone="13800000003"),
-        "guangsha": Subcontractor(name="广厦土方基础工程有限公司", scope="土方开挖与基坑支护工程", leader_name="孙立", leader_phone="13800000004"),
-        "xinlong": Subcontractor(name="鑫隆起重设备有限公司", scope="塔式起重机及施工升降机安拆维保", leader_name="周海涛", leader_phone="13800000005"),
-        "jiecheng": Subcontractor(name="洁诚环境工程有限公司", scope="现场文明施工、消防通道维护、垃圾清运、扬尘治理、生活区保洁", leader_name="吴刚", leader_phone="13800000006"),
+        "huayu": Subcontractor(project_id=project.id, name="华宇建筑劳务有限公司", scope="主体结构、二次结构、脚手架劳务作业（1-2号楼责任区）", leader_name="刘伟", leader_phone="13800000001"),
+        "hengsheng": Subcontractor(project_id=project.id, name="恒盛建筑劳务有限公司", scope="主体结构、模板支撑劳务作业（3-6号楼责任区）", leader_name="赵强", leader_phone="13800000002"),
+        "zhongan": Subcontractor(project_id=project.id, name="中安机电安装工程有限公司", scope="机电安装工程及现场临时用电维护", leader_name="陈志明", leader_phone="13800000003"),
+        "guangsha": Subcontractor(project_id=project.id, name="广厦土方基础工程有限公司", scope="土方开挖与基坑支护工程", leader_name="孙立", leader_phone="13800000004"),
+        "xinlong": Subcontractor(project_id=project.id, name="鑫隆起重设备有限公司", scope="塔式起重机及施工升降机安拆维保", leader_name="周海涛", leader_phone="13800000005"),
+        "jiecheng": Subcontractor(project_id=project.id, name="洁诚环境工程有限公司", scope="现场文明施工、消防通道维护、垃圾清运、扬尘治理、生活区保洁", leader_name="吴刚", leader_phone="13800000006"),
     }
     db.add_all(subs.values())
     db.flush()
@@ -88,17 +88,17 @@ def _seed_all(db: Session):
     db.flush()
 
     zones = [
-        Zone(name="1号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
-        Zone(name="2号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
-        Zone(name="3号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
-        Zone(name="4号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
-        Zone(name="5号楼", zone_type="高层住宅", floor_count=26, current_stage="二次结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
-        Zone(name="6号楼", zone_type="高层住宅", floor_count=26, current_stage="二次结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
-        Zone(name="地下室区域", zone_type="地下结构", floor_count=2, current_stage="基坑支护/底板", subcontractor_id=subs["guangsha"].id, responsible_user_id=users["zeren04"].id),
-        Zone(name="塔吊作业区", zone_type="公共作业区", floor_count=0, current_stage="设备运行", subcontractor_id=subs["xinlong"].id, responsible_user_id=users["zeren05"].id),
-        Zone(name="公共区域及消防通道", zone_type="公共区域", floor_count=0, current_stage="日常维护", subcontractor_id=subs["jiecheng"].id, responsible_user_id=users["zeren06"].id),
-        Zone(name="材料堆场", zone_type="公共区域", floor_count=0, current_stage="材料管理", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
-        Zone(name="生活区", zone_type="临建设施", floor_count=0, current_stage="日常管理", subcontractor_id=subs["jiecheng"].id, responsible_user_id=users["zeren06"].id),
+        Zone(project_id=project.id, name="1号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
+        Zone(project_id=project.id, name="2号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
+        Zone(project_id=project.id, name="3号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
+        Zone(project_id=project.id, name="4号楼", zone_type="高层住宅", floor_count=26, current_stage="主体结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
+        Zone(project_id=project.id, name="5号楼", zone_type="高层住宅", floor_count=26, current_stage="二次结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
+        Zone(project_id=project.id, name="6号楼", zone_type="高层住宅", floor_count=26, current_stage="二次结构", subcontractor_id=subs["hengsheng"].id, responsible_user_id=users["zeren02"].id),
+        Zone(project_id=project.id, name="地下室区域", zone_type="地下结构", floor_count=2, current_stage="基坑支护/底板", subcontractor_id=subs["guangsha"].id, responsible_user_id=users["zeren04"].id),
+        Zone(project_id=project.id, name="塔吊作业区", zone_type="公共作业区", floor_count=0, current_stage="设备运行", subcontractor_id=subs["xinlong"].id, responsible_user_id=users["zeren05"].id),
+        Zone(project_id=project.id, name="公共区域及消防通道", zone_type="公共区域", floor_count=0, current_stage="日常维护", subcontractor_id=subs["jiecheng"].id, responsible_user_id=users["zeren06"].id),
+        Zone(project_id=project.id, name="材料堆场", zone_type="公共区域", floor_count=0, current_stage="材料管理", subcontractor_id=subs["huayu"].id, responsible_user_id=users["zeren01"].id),
+        Zone(project_id=project.id, name="生活区", zone_type="临建设施", floor_count=0, current_stage="日常管理", subcontractor_id=subs["jiecheng"].id, responsible_user_id=users["zeren06"].id),
     ]
     db.add_all(zones)
     db.flush()
@@ -154,6 +154,7 @@ def _seed_all(db: Session):
         input_type = rng.choices(["text", "voice", "image"], weights=[60, 25, 15])[0]
         loc_text = " ".join(x for x in (building, floor, spot) if x)
         report = Report(
+            project_id=project.id,
             reporter_id=officer.id,
             input_type=input_type,
             raw_text=f"{loc_text}，{desc}。" if input_type == "text" else f"（{ {'voice': '语音', 'image': '图片'}[input_type] }上报）{loc_text}，{desc}。",
@@ -173,6 +174,7 @@ def _seed_all(db: Session):
         head = f"{building} {floor}".strip()
         order = WorkOrder(
             order_no=order_no,
+            project_id=project.id,
             report_id=report.id,
             title=f"{head} {htype}隐患",
             building=building,

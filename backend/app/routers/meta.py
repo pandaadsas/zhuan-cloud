@@ -49,7 +49,7 @@ def subcontractors(db: Session = Depends(get_db)):
 
 @router.get("/info")
 def info(db: Session = Depends(get_db)):
-    project = db.query(Project).first()
+    project = db.query(Project).order_by(Project.id).first()
     return {
         "app": "筑安云",
         "slogan": "把案头交给AI，把安全留给现场",

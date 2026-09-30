@@ -5,19 +5,28 @@ from ..models import Subcontractor, User, Zone
 from .extractor import SCOPE_KEYWORDS
 
 
-def match_responsible(db: Session, extracted: dict) -> dict:
-    """返回 {primary_user_id, primary_name, reason, alternates}，无匹配时由安全员手动指定。"""
+def match_responsible(db: Session, extracted: dict, project_id: int | None = None) -> dict:
+    """返回 {primary_user_id, primary_name, reason, alternates}，无匹配时由安全员手动指定。
+
+    project_id 提供时只在该项目内匹配区域和分包单位。
+    """
     building = extracted.get("building", "") or ""
     hazard_type = extracted.get("hazard_type", "") or ""
 
     zone = None
     if building:
-        zone = db.query(Zone).filter(Zone.name.like(f"%{building}%")).first()
+        query = db.query(Zone).filter(Zone.name.like(f"%{building}%"))
+        if project_id is not None:
+            query = query.filter(Zone.project_id == project_id)
+        zone = query.first()
 
     scope_kw = SCOPE_KEYWORDS.get(hazard_type, "")
     sub = None
     if scope_kw:
-        sub = db.query(Subcontractor).filter(Subcontractor.scope.like(f"%{scope_kw}%")).first()
+        query = db.query(Subcontractor).filter(Subcontractor.scope.like(f"%{scope_kw}%"))
+        if project_id is not None:
+            query = query.filter(Subcontractor.project_id == project_id)
+        sub = query.first()
 
     primary: User | None = None
     reason = ""
