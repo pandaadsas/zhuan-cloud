@@ -109,7 +109,7 @@ flowchart TD
     G --> H
 ```
 
-向量缓存说明（真实模式）：条款向量首次计算后写入 `backend/app/knowledge/embeddings_cache.json`，内容 MD5 签名一致则直接复用，避免重复调用 embedding 接口；embedding 分批调用（单批上限 10 条）。
+向量存储说明（真实模式）：条款向量存入 **Chroma 本地向量库**（`backend/knowledge/chroma_data/`，`pip install chromadb`，嵌入式无独立服务）。`refresh_cache()` 按条款内容 MD5 哈希**逐条比对、增量更新**——只对新增或变动的条款重新调用 embedding（每批上限 10 条），删除的条款同步从集合移除；集合名带 embedding 模型名，换模型时自动全量重建。检索时余弦相似度由 Chroma HNSW 索引完成（cosine distance → 相似度换算）。Chroma 不可用或向量化失败时自动降级关键词检索。
 
 ### 4.2 assess：风险定级与处置建议
 

@@ -10,6 +10,7 @@ langgraph>=0.2
 langchain-core
 openai>=1.40
 numpy
+chromadb>=1.0
 python-docx
 httpx
 dashscope
