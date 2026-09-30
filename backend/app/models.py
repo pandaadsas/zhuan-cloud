@@ -265,6 +265,7 @@ class Regulation(Base):
         content: 条款内容
         tags: 标签列表（JSON 数组）
         embedding: 向量化表示（JSON 数组，用于相似度检索）
+        source: 条款来源：builtin=内置规范（启动时同步）；import=文档导入；空=旧版种子（已退役，启动时清理）
     """
 
     __tablename__ = "regulations"
@@ -276,6 +277,7 @@ class Regulation(Base):
     content: Mapped[str] = mapped_column(Text)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str | None] = mapped_column(String(20), default="import")
 
 
 class WeeklyReport(Base):

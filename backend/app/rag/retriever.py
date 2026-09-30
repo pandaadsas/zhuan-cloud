@@ -182,7 +182,7 @@ def _search_keyword(query: str, k: int) -> list[dict]:
     scored.sort(key=lambda x: -x[0])
     results = []
     for score, item in scored[:k]:
-        if score <= 0.02:
+        if score <= 0:  # 只剔除完全无重叠的，避免全文长条款被阈值误伤
             continue
         results.append(
             {

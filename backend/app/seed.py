@@ -1,20 +1,18 @@
-"""演示数据初始化（幂等）：项目/分包/人员/责任分区/规范条款/六周历史工单。
+"""演示数据初始化（幂等）：项目/分包/人员/责任分区/六周历史工单。
 
 背景项目：三河市保障性租赁住房项目（公开招标信息提炼，12栋一类高层住宅+10栋多层公共建筑，
 总建筑面积约14.75万㎡）。分包单位、人员、制度均为演示用合理虚构，已在文档中标注。
+知识库条款不在此灌库：内置规范由 services/knowledge.sync_builtin_knowledge 启动时切片同步。
 """
-import json
 import random
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .agents.assessor import IMMEDIATE_ACTIONS
 from .auth import hash_password
-from .models import OrderEvent, Project, Regulation, Report, Subcontractor, User, WorkOrder, Zone
+from .models import OrderEvent, Project, Report, Subcontractor, User, WorkOrder, Zone
 
-KB_FILE = Path(__file__).resolve().parent.parent / "knowledge" / "regulations.json"
 RISK_DEADLINE = {"重大": 1, "高": 2, "中": 3, "低": 7}
 
 SCENARIOS = [
@@ -101,19 +99,6 @@ def _seed_all(db: Session):
         Zone(project_id=project.id, name="生活区", zone_type="临建设施", floor_count=0, current_stage="日常管理", subcontractor_id=subs["jiecheng"].id, responsible_user_id=users["zeren06"].id),
     ]
     db.add_all(zones)
-    db.flush()
-
-    kb = json.loads(KB_FILE.read_text(encoding="utf-8"))
-    for item in kb["regulations"]:
-        db.add(
-            Regulation(
-                doc_name=item["doc_name"],
-                clause_no=item["clause_no"],
-                title=item["title"],
-                content=item["content"],
-                tags=item["tags"],
-            )
-        )
     db.flush()
 
     # ---- 六周历史工单（状态分布贴近真实治理节奏，含少量超期与待审核） ----

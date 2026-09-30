@@ -9,6 +9,7 @@ from .database import Base, SessionLocal, db_mode, engine
 from .migrate import run_migrations
 from .rag.retriever import refresh_cache
 from .seed import run_if_empty
+from .services.knowledge import sync_builtin_knowledge
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("zhuan.main")
@@ -46,6 +47,7 @@ def startup():
     try:
         seeded = run_if_empty(db)
         logger.info("种子数据=%s", "已初始化" if seeded else "已存在")
+        sync_builtin_knowledge(db)  # 内置规范切片入库（幂等）：替代旧版种子条款
     finally:
         db.close()
 
