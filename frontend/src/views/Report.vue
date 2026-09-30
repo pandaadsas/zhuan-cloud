@@ -55,7 +55,7 @@
       </div>
     </div>
 
-    <el-dialog v-model="showResult" title="AI处理完成 · 工单草稿已生成" width="760px" :close-on-click-modal="false">
+    <el-dialog v-model="showResult" title="AI处理完成 · 工单草稿已生成" width="760px" append-to-body :close-on-click-modal="false">
       <template v-if="r">
         <el-steps :active="4" align-center class="steps">
           <el-step title="信息抽取" :description="r.extracted?.engine || ''" />
