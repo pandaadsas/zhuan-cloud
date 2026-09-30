@@ -17,7 +17,7 @@ echo   筑安云启动中...  浏览器将自动打开
 echo   本机访问： http://127.0.0.1:8000
 echo   局域网访问： http://本机IP:8000  （供队友访问）
 echo   演示账号： zhangmin / liqiang / zeren01 等
-echo              密码均为 zhuan@123
+echo              密码均为 123456
 echo  ================================================
 echo.
 start "" cmd /c "timeout /t 6 /nobreak >nul & start http://127.0.0.1:8000"
