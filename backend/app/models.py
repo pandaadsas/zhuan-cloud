@@ -7,6 +7,17 @@ from .database import Base
 
 
 class Project(Base):
+    """工程项目。
+
+    字段说明:
+        name: 项目名称
+        location: 项目所在地
+        total_area: 总建筑面积
+        scale_desc: 规模描述
+        current_stage: 当前施工阶段
+        note: 备注说明
+    """
+
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -19,6 +30,15 @@ class Project(Base):
 
 
 class Subcontractor(Base):
+    """分包单位。
+
+    字段说明:
+        name: 单位名称
+        scope: 承包范围
+        leader_name: 负责人姓名
+        leader_phone: 负责人电话
+    """
+
     __tablename__ = "subcontractors"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -29,6 +49,19 @@ class Subcontractor(Base):
 
 
 class User(Base):
+    """系统用户。
+
+    字段说明:
+        username: 登录用户名（唯一）
+        password_hash: 密码哈希
+        name: 姓名
+        role: 角色（如管理/安全员/分包负责人等）
+        phone: 手机号
+        email: 邮箱
+        subcontractor_id: 所属分包单位，可空
+        subcontractor: 所属分包单位关系
+    """
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -44,6 +77,17 @@ class User(Base):
 
 
 class VerifyCode(Base):
+    """验证码（短信/邮箱），用于登录或找回密码等场景。
+
+    字段说明:
+        target: 接收目标（手机号或邮箱）
+        channel: 发送渠道（sms/email）
+        code: 验证码内容
+        used: 是否已使用
+        expires_at: 过期时间
+        created_at: 创建时间
+    """
+
     __tablename__ = "verify_codes"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -56,6 +100,17 @@ class VerifyCode(Base):
 
 
 class Zone(Base):
+    """施工区域/楼栋。
+
+    字段说明:
+        name: 区域名称
+        zone_type: 区域类型
+        floor_count: 楼层数
+        current_stage: 当前施工阶段
+        subcontractor_id: 负责施工的分包单位，可空
+        responsible_user_id: 责任人用户，可空
+    """
+
     __tablename__ = "zones"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -71,6 +126,18 @@ class Zone(Base):
 
 
 class Report(Base):
+    """隐患上报原始记录。
+
+    字段说明:
+        reporter_id: 上报人用户，可空（匿名上报）
+        input_type: 输入类型（text/voice/image）
+        raw_text: 原始文本内容
+        transcript: 语音转写文本
+        image_path: 上传图片路径
+        processed: 是否已被 AI 处理并生成工单
+        created_at: 上报时间
+    """
+
     __tablename__ = "reports"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -84,6 +151,40 @@ class Report(Base):
 
 
 class WorkOrder(Base):
+    """安全隐患整改工单（核心业务实体）。
+
+    字段说明:
+        order_no: 工单编号（唯一）
+        report_id: 来源上报记录，可空
+        title: 工单标题
+        building: 楼栋
+        floor: 楼层
+        spot: 具体部位
+        zone_id: 所属区域，可空
+        hazard_type: 隐患类型
+        description: 隐患描述
+        risk_level: 风险等级（高/中/低，默认"中"）
+        suggestion: 整改建议
+        regulation_refs: 关联法规条款（JSON 数组）
+        source_type: 来源类型（text/voice/image）
+        responsible_user_id: 整改责任人，可空
+        reviewer_id: 审核人，可空
+        deadline: 整改期限，可空
+        status: 工单状态（如 pending_review/dispatched/closed 等）
+        overdue: 是否超期
+        rect_note: 整改说明
+        rect_images: 整改图片路径列表（JSON 数组）
+        dispatched_at: 派单时间
+        closed_at: 关单时间
+        created_at: 创建时间
+        updated_at: 更新时间（自动维护）
+
+    关联关系:
+        responsible_user / reviewer: 责任人与审核人用户
+        zone: 所属区域
+        events: 工单流转事件列表（OrderEvent）
+    """
+
     __tablename__ = "work_orders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -119,6 +220,17 @@ class WorkOrder(Base):
 
 
 class OrderEvent(Base):
+    """工单流转事件日志，记录工单的每次操作。
+
+    字段说明:
+        order_id: 所属工单
+        actor: 操作人姓名
+        action: 操作动作（如派单/整改/审核等）
+        detail: 操作详情
+        created_at: 操作时间
+        order: 所属工单关系
+    """
+
     __tablename__ = "order_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -132,6 +244,17 @@ class OrderEvent(Base):
 
 
 class Regulation(Base):
+    """法规条款，用于 RAG 检索为隐患定性提供依据。
+
+    字段说明:
+        doc_name: 法规文档名称
+        clause_no: 条款编号
+        title: 条款标题
+        content: 条款内容
+        tags: 标签列表（JSON 数组）
+        embedding: 向量化表示（JSON 数组，用于相似度检索）
+    """
+
     __tablename__ = "regulations"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -144,6 +267,16 @@ class Regulation(Base):
 
 
 class WeeklyReport(Base):
+    """安全周报。
+
+    字段说明:
+        week_start: 周起始日期
+        week_end: 周结束日期
+        content_md: 周报正文（Markdown 格式）
+        stats_json: 本周统计数据（JSON 对象）
+        created_at: 生成时间
+    """
+
     __tablename__ = "weekly_reports"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -155,6 +288,13 @@ class WeeklyReport(Base):
 
 
 class AppConfig(Base):
+    """应用全局配置，单行记录以 JSON 形式存储所有运行时配置。
+
+    字段说明:
+        data: 配置内容（JSON 对象）
+        updated_at: 最近更新时间（自动维护）
+    """
+
     __tablename__ = "app_config"
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
