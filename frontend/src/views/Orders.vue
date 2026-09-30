@@ -53,7 +53,7 @@
       </div>
     </div>
 
-    <el-drawer v-model="drawer" :title="detail?.order?.order_no || '工单详情'" size="min(560px, 100%)">
+    <el-drawer v-model="drawer" :title="detail?.order?.order_no || '工单详情'" size="min(560px, 100%)" append-to-body>
       <el-skeleton v-if="detailLoading" :rows="10" animated />
       <template v-else-if="detail">
         <div class="d-title">{{ detail.order.title }}</div>
