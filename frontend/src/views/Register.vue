@@ -1,12 +1,18 @@
 <template>
   <div class="login-wrap">
-    <div class="login-card">
-      <div class="logo-row">
+    <AuthScene />
+    <div class="login-card register-card">
+      <div class="mobile-brand">
         <BrandMark />
         <div>
-          <div class="app-name">注册账号</div>
-          <div class="app-sub">筑安云 · 工地安全智安协同平台</div>
+          <div class="app-name">筑安云</div>
+          <div class="app-sub">工地安全 · 智安协同平台</div>
         </div>
+      </div>
+      <div class="form-heading">
+        <span class="form-eyebrow">CREATE ACCOUNT</span>
+        <h1>加入项目工作台</h1>
+        <p>创建账号并选择工作角色，进入对应的安全协同流程。</p>
       </div>
 
       <el-tabs v-model="channel" class="reg-tabs">
@@ -81,6 +87,7 @@ import { useRouter } from 'vue-router'
 import http from '../api'
 import { setAuth, ROLE_HOME } from '../store'
 import BrandMark from '../components/BrandMark.vue'
+import AuthScene from '../components/AuthScene.vue'
 
 const router = useRouter()
 const channel = ref('email')
