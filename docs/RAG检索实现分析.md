@@ -2,7 +2,7 @@
 
 > 对应代码：`backend/app/rag/retriever.py`（检索核心）、`backend/app/services/knowledge.py`（知识入库）、`backend/app/agents/llm.py`（embedding 调用）、`backend/app/config.py`（模型配置）
 >
-> 一句话概括：**规范 Markdown 启动时切片入 MySQL，向量存入 Chroma 本地持久化库（`knowledge/chroma_data`），按条款内容哈希增量更新**——没有独立向量库服务，双模式（向量 / 关键词）接口一致，可静默降级。
+> 一句话概括：**规范 Markdown 启动时切片入业务数据库（MySQL或SQLite），向量存入 Chroma 本地持久化库（`knowledge/chroma_data`），按条款内容哈希增量更新**——没有独立向量库服务，双模式（向量 / 关键词）接口一致，可静默降级。
 
 本文按链路拆分为 **4 个阶段** 分段讲解，每段配独立的 Mermaid 流程图。
 
@@ -14,7 +14,7 @@
 backend/knowledge/规范.md（原始文档层）
         │ services/knowledge.parse_regulation_md() 条款级切片
         ▼
-MySQL Regulation 表（条款文本，source='builtin'）
+业务库 Regulation 表（条款文本，source='builtin'）
         │ refresh_cache() 只查轻量文本列
         ▼
 内存缓存 _cache（模块级列表）                Chroma 本地库（knowledge/chroma_data）
@@ -29,18 +29,18 @@ MySQL Regulation 表（条款文本，source='builtin'）
 
 | 组成部分 | 实现 | 位置 |
 | --- | --- | --- |
-| 原始文档 | 仓库内规范 Markdown `backend/knowledge/*.md`，一条（N.M.K）= 一个 chunk | `services/knowledge.py:25` |
-| 条款存储 | MySQL `Regulation` 表（`source='builtin'`，启动时幂等同步；`import` 预留给未来文档导入管线） | `models.py:258` |
-| 向量模型 | 阿里云 DashScope `text-embedding-v4`（默认值，可运行时配置覆盖） | `config.py:21` |
-| 向量存储 | Chroma 嵌入式客户端，持久化目录 `backend/knowledge/chroma_data/`，集合名带模型名 | `retriever.py:24,53` |
-| 相似度计算 | Chroma HNSW 近邻（真实）/ 字符 bigram Jaccard（降级） | `retriever.py:148,176` |
-| 调用方 | ① LangGraph `retrieve` 节点（k=4）；② AI 对话 `kb` 意图（k=3） | `agents/graph.py:52`、`routers/chat.py:96` |
+| 原始文档 | BUILTIN_MD_FILE指向的仓库规范Markdown，一条（N.M.K）= 一个 chunk | `services/knowledge.py` |
+| 条款存储 | MySQL/SQLite `Regulation` 表（`source='builtin'`，启动时幂等同步；`import` 预留给未来文档导入管线） | `models.py` |
+| 向量模型 | 阿里云 DashScope `text-embedding-v4`（默认值，可运行时配置覆盖） | `config.py` |
+| 向量存储 | Chroma 嵌入式客户端，持久化目录 `backend/knowledge/chroma_data/`，集合名带模型名 | `retriever.py` |
+| 相似度计算 | Chroma HNSW 近邻（真实）/ 字符 bigram Jaccard（降级） | `retriever.py` |
+| 调用方 | ① LangGraph `retrieve` 节点（k=4）；② 安全助手 `search_regulations` 工具及规则降级 `kb_answer`（k=3） | `agents/graph.py`、`agents/chat_agent.py`、`agents/chat_tools.py` |
 
 ---
 
 ## 2. 阶段①：知识入库（sync_builtin_knowledge）
 
-内置规范以**仓库文件为原始文档层**，启动时切成条款同步进 MySQL，替代旧版种子 JSON 灌库：
+内置规范以**仓库文件为原始文档层**，启动时切成条款同步进业务数据库，替代旧版种子 JSON 灌库：
 
 ```mermaid
 flowchart TD
@@ -58,17 +58,17 @@ flowchart TD
 
 - **结构化切分，非通用窗口切分**：chunk 边界就是条款编号边界，检索命中后能直接给出 `《doc_name》第N.M.K条` 的精确引用；
 - **tags 是确定性映射**（章/小节号 → 检索标签），不是 LLM 生成，稳定且可重算；
-- 本模块只管 MySQL 行，**向量索引由阶段②按内容哈希派生**，两层职责分离。
+- 本模块只管业务库条款行，**向量索引由阶段②按内容哈希派生**，两层职责分离。
 
 ---
 
 ## 3. 阶段②：缓存构建与向量同步（refresh_cache / _sync_vectors）
 
-启动时（带 3 次重试）或首次 `search()` 触发。设计关键：**向量不再经过应用层中转，直接持久化在 Chroma 磁盘目录**；MySQL 只提供条款文本，内存 `_cache` 只保留元数据。
+启动时（带 3 次重试）或首次 `search()` 触发。设计关键：**应用层获取embedding后写入Chroma磁盘目录，不再存入Regulation.embedding字段**；业务数据库只提供条款文本，内存 `_cache` 只保留元数据。
 
 ```mermaid
 flowchart TD
-    A["refresh_cache(db)<br/>retriever.py:108"] --> B["查询 Regulation 表全部条款<br/>只查 id/doc_name/clause_no/<br/>title/content/tags 轻量列"]
+    A["refresh_cache(db)<br/>retriever.py"] --> B["查询 Regulation 表全部条款<br/>只查 id/doc_name/clause_no/<br/>title/content/tags 轻量列"]
     B --> C{"表里有没有数据？"}
     C -- "否" --> D["_cache = 空列表<br/>返回 mode = keyword"]
     C -- "是" --> E["_cache 装载条款元数据<br/>并预计算每条 bigram grams<br/>（两种模式共用，不再互斥）"]
@@ -80,7 +80,7 @@ flowchart TD
     H -- "哈希变化或新增" --> J["embed_texts 批量向量化<br/>（单批10条）"]
     H -- "无差异" --> K["零 API 调用"]
     J -- "成功" --> L["col.upsert 向量 + 文档 + metadata<br/>（含新 content_hash）"]
-    J -- "embedding 失败" --> M["返回 keyword<br/>（本次降级，向量库不动）"]
+    J -- "embedding 失败" --> M["返回 keyword<br/>（本次同步降级，已删除的失效向量不会回滚）"]
     I & L & K --> O["日志：知识库缓存就绪<br/>N 条，检索模式 = vector / keyword"]
     M --> O
     N --> O
@@ -88,17 +88,17 @@ flowchart TD
 
 三个关键机制：
 
-1. **逐条增量，不再全量重算**：每条向量携带自己的 `content_hash`（`id|doc_name|clause_no|title|content` 的 MD5，`retriever.py:66`）。改一条条款只重算这一条，其余向量留在磁盘上原样复用——对比旧版"整库一个 MD5、改一条全量重算"是本次重构的核心收益；
-2. **集合名带模型名**（`regulations_text-embedding-v4`，`retriever.py:59`）：换 embedding 模型时自动落到新集合全量重建，新旧向量永不混算，旧集合目录留在原地可手动清理；
+1. **逐条增量，不再全量重算**：每条向量携带自己的 `content_hash`（`id|doc_name|clause_no|title|content` 的 MD5，`retriever.py`）。改一条条款只重算这一条，其余向量留在磁盘上原样复用——对比旧版"整库一个 MD5、改一条全量重算"是本次重构的核心收益；
+2. **集合名带模型名**（`regulations_text-embedding-v4`，`retriever.py`）：换 embedding 模型时自动落到新集合全量重建，新旧向量永不混算，旧集合目录留在原地可手动清理；
 3. **删除同步**：库中删掉的条款，其向量在下次 `refresh_cache` 时被 `stale` 分支清掉，不留幽灵数据。
 
 向量化调用细节（`embed_texts`，底层走 `agents/llm.py` 的 OpenAI 兼容客户端）：
 
-- 模型：`text-embedding-v4`（`config.py:21` 默认，设置页可覆盖）；
+- 模型：`text-embedding-v4`（`config.py` 默认，设置页可覆盖）；
 - **每批最多 10 条**（模型单批上限），按 `resp.data[].index` 排序还原顺序；
 - 返回 `None` 表示失败，由调用方决定降级。
 
-落盘后的文件结构（`knowledge/chroma_data/`）：`chroma.sqlite3` 存元数据/文档/哈希，UUID 目录存 HNSW 向量索引（`data_level0.bin` 等），整体 1.5MB 量级，可整体删除触发全量重建。
+落盘后的文件结构（`knowledge/chroma_data/`）：`chroma.sqlite3` 存元数据/文档/哈希，UUID 目录存 HNSW 向量索引（`data_level0.bin` 等），体积随条款数量与向量维度变化，可整体删除触发全量重建。
 
 ---
 
@@ -108,7 +108,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["search(db, query, k)<br/>retriever.py:200"] --> B{"内存 _cache 是否就绪？"}
+    A["search(db, query, k)<br/>retriever.py"] --> B{"内存 _cache 是否就绪？"}
     B -- "否" --> C["先调 refresh_cache()"]
     B -- 是 --> D["_search_vector<br/>embed_texts([query]) 查询向量化"]
     D --> E{"拿到查询向量？<br/>且集合 count > 0？"}
@@ -135,7 +135,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["降级分支入口"] --> B["查询文本 → 字符 bigram 集合<br/>_bigrams(query)<br/>retriever.py:30（先去除空白字符）"]
+    A["降级分支入口"] --> B["查询文本 → 字符 bigram 集合<br/>_bigrams(query)<br/>retriever.py（先去除空白字符）"]
     B --> C["遍历 _cache 逐条计算：<br/>Jaccard = |query_grams ∩ item.grams|<br/>/ |query_grams ∪ item.grams|"]
     C --> D["按 Jaccard 降序取前 k 条"]
     D --> E{"过滤：score ≤ 0 完全无重叠"}
@@ -151,8 +151,8 @@ bigram 即相邻两字滑动窗口（如"消防通道" → `{消防,防通,通�
 
 | 调用方 | 参数 | 用途 |
 | --- | --- | --- |
-| LangGraph `retrieve` 节点（`agents/graph.py:52`） | `search(db, raw_text, k=4)` | 原始上报文本检索规范条款，作为风险定级底线和处置建议的引用依据（工单草稿取前 4 条进 `regulation_refs`） |
-| AI 对话 `kb` 意图（`routers/chat.py:96`） | `search(db, msg, k=3)` | 用户提问检索条款：LLM 可用时作为上下文生成带出处的回答；不可用时直接拼接条款原文返回 |
+| LangGraph `retrieve` 节点（`agents/graph.py`） | `search(db, raw_text, k=4)` | 原始上报文本检索规范条款，作为处置建议的引用依据；风险定级底线来自RISK_FLOOR规则（工单草稿取最多前 4 条进 `regulation_refs`） |
+| 安全助手 `search_regulations` 工具及规则降级 `kb_answer`（`agents/chat_agent.py`、`agents/chat_tools.py`） | `search(db, msg, k=3)` | 用户提问检索条款：LLM 可用时作为上下文生成带出处的回答；不可用时直接拼接条款原文返回 |
 
 两处拿到的是同一个接口、同一种返回结构——`search()` 的签名就是这个 RAG 层对外的全部抽象面。
 
@@ -170,8 +170,8 @@ bigram 即相邻两字滑动窗口（如"消防通道" → `{消防,防通,通�
 
 ### 7.2 局限（升级动因）
 
-1. **嵌入式单进程**：Chroma 以库形态嵌在后端进程里，不支持多实例共享同一目录（并发写需单进程保证）；数据规模或并发上来后需迁移 Chroma Server 或独立向量库。
-2. **一致性依赖启动同步**：向量与 MySQL 行的一致性由 `refresh_cache` 时刻保证，运行期若直接改库（如未来文档导入接口），需记得触发刷新，否则新增条款在本次进程生命周期内检索不到。
+1. **嵌入式单进程**：Chroma 以库形态嵌在后端进程里，不支持多实例共享同一目录（当前本地目录部署按单服务实例使用，共享部署需另行设计）；数据规模或并发上来后需迁移 Chroma Server 或独立向量库。
+2. **一致性依赖启动同步**：向量与业务库条款行的一致性由 `refresh_cache` 时刻保证，运行期若直接改库（如未来文档导入接口），需记得触发刷新，否则新增条款在本次进程生命周期内检索不到。
 3. **HNSW 图不便于人工审计**：`chroma_data` 下是二进制索引文件，排查问题需借助 Chroma API 或打开 `chroma.sqlite3` 查元数据表。
 4. **无重排序（rerank）**：向量召回直接按距离截断，未做交叉编码精排；k 较小时语义相近但编号不同的条款可能挤占名额——百条级规模下影响有限。
 
@@ -185,3 +185,9 @@ Chroma 本地嵌入式（现状）
 ```
 
 每一步都只动 `rag/retriever.py`（或新增 service）——`search(db, query, k) -> list[dict]` 依然是干净的抽象边界，这也是当前实现最重要的资产。
+
+## 8. 当前代码边界
+
+当前仅同步BUILTIN_MD_FILE指向的规范文件，不会扫描并导入目录内任意Markdown。旧版49条种子条款在首次同步时清理，当前数量以parse_regulation_md输出为准。`search` 每次先尝试查询向量化，失败或无结果再走关键词；refresh_cache返回的mode不是固定的后续检索开关。模拟模式不调用embedding API，但chromadb仍为必装依赖，因为模块顶层直接导入。
+
+安全助手真实模式通过search_regulations调用RAG；规则降级由kb_answer调用同一search接口。项目管理助手不使用规范检索工具。当前未实现来源优先级排序、rerank或通用文件上传入库。

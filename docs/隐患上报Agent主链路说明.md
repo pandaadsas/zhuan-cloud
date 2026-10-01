@@ -2,7 +2,7 @@
 
 > 对应代码：`backend/app/agents/`、`backend/app/routers/reports.py`、`backend/app/rag/retriever.py`
 >
-> 主链路一句话概括：**安全员上报隐患文本 → 路由层鉴权 → LangGraph 状态机编排（信息抽取 → 追问/知识检索 → 风险定级 → 责任匹配 → 工单草稿）→ 路由层落库生成待审核工单**。
+> 主链路一句话概括：**安全员上报隐患文本 → 路由层鉴权 → LangGraph 状态机编排（信息抽取 → 追问/知识检索 → 风险定级 → 责任匹配 → 工单草稿）→ 共用上报服务落库生成待审核工单**。
 
 本文将主链路拆分为 **5 个阶段** 分段讲解，每段配独立的 Mermaid 流程图，避免一张大图难以阅读。
 
@@ -12,19 +12,19 @@
 
 | 阶段 | 入口/节点 | 代码位置 | 职责 |
 | --- | --- | --- | --- |
-| ① 接入层 | `POST /api/reports` | `routers/reports.py:24` | 鉴权、参数校验、调用流水线、结果落库 |
-| ② 信息抽取 | `extract` 节点 | `agents/extractor.py:98` | 原始文本 → 结构化隐患信息（LLM 优先，规则兜底） |
-| ③ 路由分支 | 条件边 | `agents/graph.py:46` | 位置+类型缺失 → 追问结束；否则进入检索 |
-| ④ 检索与定级 | `retrieve` + `assess` 节点 | `rag/retriever.py:119`、`agents/assessor.py:47,63` | 检索规范条款；风险定级并生成处置建议 |
-| ⑤ 派单与草稿 | `dispatch` + `draft` 节点 | `agents/dispatcher.py:8`、`agents/graph.py:63` | 匹配责任人；组装工单草稿，由路由层持久化 |
+| ① 接入层 | `POST /api/reports` | `routers/reports.py`、`services/reporting.py` | 路由鉴权、校验；共用服务调用流水线并落库 |
+| ② 信息抽取 | `extract` 节点 | `agents/extractor.py` | 原始文本 → 结构化隐患信息（LLM 优先，规则兜底） |
+| ③ 路由分支 | 条件边 | `agents/graph.py` | 位置+类型缺失 → 追问结束；否则进入检索 |
+| ④ 检索与定级 | `retrieve` + `assess` 节点 | `rag/retriever.py`、`agents/assessor.py` | 检索规范条款；风险定级并生成处置建议 |
+| ⑤ 派单与草稿 | `dispatch` + `draft` 节点 | `agents/dispatcher.py`、`agents/graph.py` | 匹配责任人；组装工单草稿，由共用上报服务持久化 |
 
-状态机定义在 `agents/graph.py:22` 的 `PipelineState`（TypedDict），各节点只读写状态字典，节点可独立替换（规则引擎 / LLM 引擎）。
+状态机定义在 `agents/graph.py` 的 `PipelineState`（TypedDict），各节点只读写状态字典，节点可独立替换（规则引擎 / LLM 引擎）。
 
 ---
 
 ## 1. 阶段①：接入层（路由 → 流水线入口）
 
-路由层只做三件事：**鉴权、校验、持久化**，不参与任何 AI 逻辑；流水线本身不落库，只返回 dict。
+REST路由负责鉴权和输入校验，随后调用 `services/reporting.py:create_report_with_draft`，由共用服务运行流水线并持久化。对话工具 `submit_hazard_report` 复用同一服务；流水线本身不落库，只返回 dict。
 
 ```mermaid
 flowchart TD
@@ -32,7 +32,7 @@ flowchart TD
     B -- 未授权 --> C["403 拒绝"]
     B -- 通过 --> D{"文本长度 ≥ 5 字？"}
     D -- 否 --> E["400：请描述隐患内容"]
-    D -- 是 --> F["process_report(db, text, input_type)<br/>agents/graph.py:112"]
+    D -- 是 --> F["create_report_with_draft(db, user, project, text, input_type)<br/>services/reporting.py"]
     F --> G["构建并 invoke LangGraph<br/>返回 result dict（不落库）"]
     G --> H{"result.need_clarify ?"}
     H -- "True（信息不足）" --> I["仅保存 Report 记录<br/>返回追问话术 question"]
@@ -43,7 +43,7 @@ flowchart TD
 
 要点：
 
-- 工单编号在路由层生成（`gen_order_no`，格式 `ZA-YYYYMMDD-NNN`）。
+- 工单编号在共用上报服务生成（`services/reporting.py:gen_order_no`，格式 `ZA-YYYYMMDD-NNN`）。
 - 流转记录由人工与 AI 各一条：安全员「上报隐患」+「筑安云AI 生成工单草稿」（含抽取引擎、条款数、匹配理由）。
 - 楼栋能命中 `Zone` 分区时同时回填 `zone_id`。
 
@@ -56,8 +56,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["输入：raw_text 原始上报文本"] --> B{"llm_ready() ?<br/>mock_mode 关闭 且<br/>已配置 DashScope key"}
-    B -- "否（模拟模式）" --> R["规则引擎 extract_by_rules<br/>extractor.py:58"]
-    B -- 是 --> C["chat_json(结构化抽取 Prompt)<br/>llm.py:34"]
+    B -- "否（模拟模式）" --> R["规则引擎 extract_by_rules<br/>extractor.py"]
+    B -- 是 --> C["chat_json(结构化抽取 Prompt)<br/>llm.py"]
     C -- "调用成功" --> D{"返回 JSON 且<br/>hazard_type 非空？"}
     C -- "异常/超时" --> R
     D -- 是 --> E["标记 engine = 通义千问AI抽取"]
@@ -76,15 +76,15 @@ flowchart TD
 
 ## 3. 阶段③：条件路由（追问 or 继续）
 
-抽取完成后由条件边 `_route_after_extract` 决定走向，这是流水线唯一的分支点：
+抽取完成后由条件边 `_route_after_extract` 决定走向，这是流水线的追问分支点：
 
 ```mermaid
 flowchart TD
-    A["extract 节点完成"] --> B{"need_clarify(extracted)<br/>graph.py:107"}
+    A["extract 节点完成"] --> B{"need_clarify(extracted)<br/>graph.py"}
     B -- "building 为空<br/>且 hazard_type ∈<br/>{其他-待归类, 空}" --> C["clarify 节点"]
     B -- "位置或类型<br/>至少有一项命中" --> D["进入 retrieve 节点"]
     C --> E["need_clarify = True<br/>question = 固定追问话术<br/>（请补充具体位置和问题类型）"]
-    E --> F["END<br/>路由层只存 Report，不生成工单"]
+    E --> F["END<br/>共用服务只存 Report，不生成工单"]
     D --> G["继续主流程"]
 ```
 
@@ -98,29 +98,29 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["retrieve 节点<br/>kb_search(db, raw_text, k=4)"] --> B{"内存缓存 _cache<br/>是否已就绪？"}
-    B -- 否 --> C["refresh_cache()：<br/>从 Regulation 表加载条款<br/>（只查轻量列，不读大字段）"]
-    B -- 是 --> D{"缓存条目是否<br/>带向量？"}
+    A[retrieve 调用 search k=4] --> B{内存缓存已加载}
+    B -->|否| C[refresh_cache 加载条款 并尝试增量向量同步]
+    B -->|是| D[embed_texts 查询向量化]
     C --> D
-    D -- "是（真实模式）" --> E["qwen text-embedding<br/>查询向量化"]
-    E --> F["逐条计算余弦相似度<br/>取 Top-4"]
-    D -- "否（模拟模式）" --> G["字符 bigram<br/>Jaccard 相似度<br/>取 Top-4"]
-    F --> H["返回条款列表：<br/>doc_name / clause_no /<br/>title / content / score"]
+    D --> E{向量可用且 Chroma 检索成功}
+    E -->|是| F[HNSW cosine 搜索 按 id 回填条款 取 Top4]
+    E -->|否| G[bigram Jaccard 排序 过滤零重叠 取 Top4]
+    F --> H[返回条款与相似度]
     G --> H
 ```
 
-向量存储说明（真实模式）：条款向量存入 **Chroma 本地向量库**（`backend/knowledge/chroma_data/`，`pip install chromadb`，嵌入式无独立服务）。`refresh_cache()` 按条款内容 MD5 哈希**逐条比对、增量更新**——只对新增或变动的条款重新调用 embedding（每批上限 10 条），删除的条款同步从集合移除；集合名带 embedding 模型名，换模型时自动全量重建。检索时余弦相似度由 Chroma HNSW 索引完成（cosine distance → 相似度换算）。Chroma 不可用或向量化失败时自动降级关键词检索。
+向量存储说明（真实模式）：条款向量存入 **Chroma 本地向量库**（`backend/knowledge/chroma_data/`，依赖已列入requirements，嵌入式无独立服务）。`refresh_cache()` 按条款内容 MD5 哈希**逐条比对、增量更新**——只对新增或变动的条款重新调用 embedding（每批上限 10 条），删除的条款同步从集合移除；集合名带 embedding 模型名，换模型时自动全量重建。检索时余弦相似度由 Chroma HNSW 索引完成（cosine distance → 相似度换算）。Chroma运行时失败或向量化失败时自动降级关键词检索。
 
 ### 4.2 assess：风险定级与处置建议
 
 ```mermaid
 flowchart TD
-    A["assess 节点"] --> B["finalize_risk(extracted)<br/>assessor.py:47"]
+    A["assess 节点"] --> B["finalize_risk(extracted)<br/>assessor.py"]
     B --> C{"LLM 初判等级 vs<br/>RISK_FLOOR 类型底线<br/>谁高取谁（只升不降）"}
     C --> D{"描述含重大关键词？<br/>重大危险源 / 大面积坍塌 /<br/>人员被困 / 坠落已发生"}
     D -- 是 --> E["定级 = 重大"]
     D -- 否 --> F["定级 = LLM 初判 与<br/>类型底线 的较高者"]
-    E --> G["build_suggestion(extracted, regs)<br/>assessor.py:63"]
+    E --> G["build_suggestion(extracted, regs)<br/>assessor.py"]
     F --> G
     G --> H{"chat_text 调用成功？"}
     H -- 是 --> I["LLM 建议：引用检索条款，<br/>按 立即措施/整改要求/预防措施<br/>三段输出，150 字内"]
@@ -142,9 +142,9 @@ flowchart TD
     A["dispatch 节点<br/>match_responsible(db, extracted)"] --> B{"楼栋能命中<br/>Zone 责任分区？"}
     B -- 是 --> C["primary = 分区.responsible_user_id<br/>理由：区域责任人"]
     B -- 否 --> D{"隐患类型经 SCOPE_KEYWORDS<br/>映射到分包 scope？"}
-    D -- 是 --> E["primary = 该分包下<br/>role=responsible 的用户<br/>理由：承包范围匹配"]
+    D -- 是 --> E["primary = 当前项目该分包下<br/>role=responsible 的用户<br/>理由：承包范围匹配"]
     D -- 否 --> F["primary = None<br/>理由：请安全员审核时手动指定"]
-    C --> G["生成 alternates 候选列表：<br/>全量 role=responsible 用户，<br/>同分包者 score=0.7 置顶，<br/>取前 2 名"]
+    C --> G["生成 alternates 候选列表：<br/>项目相关 role=responsible 用户，<br/>同分包者 score=0.7 置顶，<br/>取前 2 名"]
     E --> G
     F --> G
     G --> H["输出 {primary_user_id,<br/>primary_name, reason, alternates}"]
@@ -194,7 +194,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant FE as 前端（隐患上报页）
-    participant RT as reports 路由层
+    participant RT as reports 路由与 reporting 服务
     participant LG as LangGraph 流水线
     participant LLM as DashScope(qwen)
     participant KB as RAG 检索
@@ -227,6 +227,10 @@ sequenceDiagram
 
 1. **编排与执行分离**：LangGraph 只负责流程编排和状态传递；每个节点是独立函数，可单独替换为规则引擎或 LLM 引擎。
 2. **双层降级**：LLM 层（`llm.py`）与 RAG 层（`retriever.py`）都遵循「真实模式优先、失败静默降级、接口不变」的约定，演示场景零外部依赖。
-3. **编排层不落库**：`process_report` 只返回 dict，持久化、工单编号生成、事件记录全部收口在路由层，事务边界清晰。
+3. **编排层不落库**：`process_report` 只返回 dict，持久化、工单编号生成、事件记录收口在共用上报服务，REST与对话上报行为一致；服务先提交Report，再提交工单与事件，并非单一原子事务。
 4. **风险只升不降**：LLM 初判 → 类型底线 `RISK_FLOOR` → 关键词升级「重大」，三层取高，避免高危隐患被低估。
 5. **人工兜底**：信息不足走追问分支、责任人匹配失败交安全员指定，AI 结果始终以「草稿（pending_review）」形态进入人工审核闭环。
+
+## 9. 对话上报与项目上下文
+
+真实AI模式下，安全员和安全总监可通过安全助手明确要求上报。`submit_hazard_report` 调用共用 `create_report_with_draft`，与REST入口使用相同的草稿、编号和事件逻辑。责任分区、分包与候选人员匹配使用当前项目上下文；生成的是待审核工单，不会直接派发。模拟助手没有对话上报规则执行链，需使用隐患上报页。更多协议与权限见[智能助手说明](智能助手与聊天工作区说明.md)。
