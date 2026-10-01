@@ -3,9 +3,10 @@ import logging
 import re
 from collections import Counter
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..models import OrderEvent, WorkOrder
+from ..models import OrderEvent, WorkOrder, Zone
 from ..rag.retriever import search as kb_search
 from ..serializers import STATUS_LABELS
 from .llm import chat_text, llm_ready
@@ -141,3 +142,172 @@ def kb_answer(db: Session, msg: str) -> tuple[str, list[dict]]:
     lines.append("")
     lines.append("建议按上述条款组织落实；如需生成整改工单，请到「隐患上报」页面提交。")
     return "\n".join(lines), refs
+
+
+# ---------- 能力面扩展：工单筛选 / 全量统计 / 站点目录 / 周报查询 / 隐患上报 ----------
+
+
+def orders_list_markdown(
+    db: Session,
+    user,
+    project_id: int | None = None,
+    status: str = "",
+    risk: str = "",
+    keyword: str = "",
+    mine: bool = False,
+) -> str:
+    """按状态/风险/关键词筛选工单列表；responsible 角色强制只看本人负责的。"""
+    from ..routers.orders import sweep_overdue
+
+    sweep_overdue(db)
+    query = db.query(WorkOrder)
+    if project_id is not None:
+        query = query.filter(WorkOrder.project_id == project_id)
+    if user.role == "responsible" or mine:
+        query = query.filter(WorkOrder.responsible_user_id == user.id)
+    if status:
+        query = query.filter(WorkOrder.status == status)
+    if risk:
+        query = query.filter(WorkOrder.risk_level == risk)
+    if keyword:
+        like = f"%{keyword}%"
+        query = query.filter(or_(WorkOrder.title.like(like), WorkOrder.description.like(like)))
+    rows = query.order_by(WorkOrder.created_at.desc()).limit(8).all()
+
+    if not rows:
+        return "没有符合条件的工单。"
+    lines = [f"**符合条件的工单（最近 {len(rows)} 条）**"]
+    for o in rows:
+        lines.append(
+            f"- **{o.order_no}**｜{o.title}\n"
+            f"  状态：{STATUS_LABELS.get(o.status, o.status)}｜风险：{o.risk_level}｜"
+            f"责任人：{o.responsible_user.name if o.responsible_user else '未指定'}｜"
+            f"期限：{o.deadline.strftime('%m-%d') if o.deadline else '未设定'}"
+            + ("｜⚠️已超期" if o.overdue else "")
+        )
+    return "\n".join(lines)
+
+
+def stats_overview(db: Session, project) -> dict:
+    """全量统计（汇总/分布/8周趋势/超期明细），裁剪掉对对话无意义的 meta 字段。"""
+    from ..routers.stats import overview_data
+
+    data = overview_data(db, project)
+    data.pop("meta", None)
+    return data
+
+
+def site_directory(db: Session, project_id: int | None, kind: str) -> str:
+    """区域/分包/责任人三类目录查询。"""
+    from ..models import Subcontractor
+
+    if kind == "zones":
+        query = db.query(Zone)
+        if project_id is not None:
+            query = query.filter(Zone.project_id == project_id)
+        zones = query.order_by(Zone.id).all()
+        if not zones:
+            return "当前项目暂无责任区域数据。"
+        lines = ["**责任区域目录**"]
+        for z in zones:
+            lines.append(
+                f"- {z.name}（{z.zone_type or '未分类'}，{z.floor_count or '?'}层）｜"
+                f"责任人：{z.responsible_user.name if z.responsible_user else '未指定'}｜"
+                f"分包：{z.subcontractor.name if z.subcontractor else '无'}｜当前阶段：{z.current_stage or '-'}"
+            )
+        return "\n".join(lines)
+
+    if kind == "subcontractors":
+        query = db.query(Subcontractor)
+        if project_id is not None:
+            query = query.filter(Subcontractor.project_id == project_id)
+        subs = query.order_by(Subcontractor.id).all()
+        if not subs:
+            return "当前项目暂无分包单位数据。"
+        lines = ["**分包单位目录**"]
+        for s in subs:
+            lines.append(f"- {s.name}｜承包范围：{s.scope or '-'}｜负责人：{s.leader_name or '-'}（{s.leader_phone or '-'}）")
+        return "\n".join(lines)
+
+    if kind == "responsible":
+        from ..models import User as U
+
+        query = db.query(U).filter(U.role == "responsible")
+        if project_id is not None:
+            from ..models import Subcontractor
+
+            sub_ids = [s.id for s in db.query(Subcontractor.id).filter(Subcontractor.project_id == project_id)]
+            query = query.filter(or_(U.subcontractor_id.in_(sub_ids), U.subcontractor_id.is_(None)))
+        users = query.order_by(U.id).all()
+        if not users:
+            return "当前项目暂无分包负责人数据。"
+        lines = ["**分包负责人目录**"]
+        for u in users:
+            sub = u.subcontractor.name if u.subcontractor_id else ""
+            lines.append(f"- {u.name}" + (f"（{sub}）" if sub else "") + (f"｜电话：{u.phone}" if u.phone else ""))
+        return "\n".join(lines)
+
+    return f"未知的目录类型 {kind}，可选：zones（责任区域）/ subcontractors（分包单位）/ responsible（分包负责人）。"
+
+
+def weekly_list(db: Session, project_id: int | None) -> str:
+    """历史周报列表（最近 10 篇）。"""
+    from ..models import WeeklyReport
+
+    query = db.query(WeeklyReport)
+    if project_id is not None:
+        query = query.filter(WeeklyReport.project_id == project_id)
+    rows = query.order_by(WeeklyReport.week_start.desc()).limit(10).all()
+    if not rows:
+        return "当前项目还没有历史周报，可以让我帮你生成一份。"
+    lines = ["**历史周报（最近 %d 篇）**" % len(rows)]
+    for r in rows:
+        preview = (r.content_md or "").replace("\n", " ")[:60]
+        lines.append(f"- {r.week_start.strftime('%Y-%m-%d')} ~ {r.week_end.strftime('%m-%d')}｜{preview}…")
+    return "\n".join(lines)
+
+
+def weekly_get_md(db: Session, project_id: int | None, offset: int = 0) -> str | None:
+    """按周偏移取周报全文；该周未生成过则返回 None。"""
+    from ..models import WeeklyReport
+    from ..services.weekly import week_range
+
+    start, _end = week_range(offset)
+    query = db.query(WeeklyReport).filter(WeeklyReport.week_start == start)
+    if project_id is not None:
+        query = query.filter(WeeklyReport.project_id == project_id)
+    report = query.order_by(WeeklyReport.id.desc()).first()
+    return report.content_md if report else None
+
+
+def submit_hazard(db, user, project, text: str) -> tuple[dict, list[dict]]:
+    """对话内提交隐患上报：跑流水线并落库，返回结果 + 条款引用。"""
+    from ..services.reporting import create_report_with_draft
+
+    text = (text or "").strip()
+    if len(text) < 5:
+        return (
+            {"error": "描述太短，请把隐患的位置和问题说清楚，例如：3号楼12层临边防护栏杆缺失"},
+            [],
+        )
+    result = create_report_with_draft(db, user, project, text, "text")
+    if result["need_clarify"]:
+        return (
+            {"need_clarify": True, "question": result["question"], "extracted": result["extracted"]},
+            [],
+        )
+    order = result["order"]
+    refs = (order.get("regulation_refs") or [])[:4]
+    payload = {
+        "submitted": True,
+        "order_no": order["order_no"],
+        "title": order["title"],
+        "risk_level": order["risk_level"],
+        "status": "pending_review（待安全员审核）",
+        "responsible": order.get("responsible_name") or "未指定",
+        "deadline": order.get("deadline", ""),
+        "match_reason": result["match_reason"],
+        "alternates": result["alternates"],
+        "note": "提醒用户：工单已生成、待安全员在整改工单页审核派单。",
+    }
+    return payload, refs

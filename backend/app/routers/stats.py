@@ -22,6 +22,11 @@ def overview(
     user: User = Depends(get_current_user),
     project: Project = Depends(current_project),
 ):
+    return overview_data(db, project)
+
+
+def overview_data(db: Session, project: Project) -> dict:
+    """全量统计看板数据；chatbot 的 query_stats 工具复用同一份聚合。"""
     sweep_overdue(db)
     # 单查询聚合：避免对远程库多次串行往返（每次 ~0.4s）
     rows = db.query(

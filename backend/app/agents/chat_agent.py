@@ -1,6 +1,7 @@
 """对话 Agent：qwen tool-calling 循环 + SSE 事件生成器。
 
-把进度/统计/规范/周报包装成工具交给 LLM 自主调度，支持多轮追问；
+工具采用注册表模式：schema / 执行体 / 角色权限 / 前端状态文案声明在一处；
+工具可返回 Terminal 把内容直接流式下发（长周报场景，不经 LLM 改写）。
 mock 模式不进入本模块，由路由层降级走规则链路（零 API 消耗）。
 """
 import json
@@ -11,15 +12,22 @@ from sqlalchemy.orm import Session
 
 from ..config_runtime import get_cfg
 from ..models import Project, User
-from ..rag.retriever import search as kb_search
-from ..services.weekly import generate_weekly, week_range
-from .chat_tools import find_order_markdown, stats_markdown
+from .chat_tools import (
+    find_order_markdown,
+    orders_list_markdown,
+    site_directory,
+    stats_overview,
+    submit_hazard,
+    weekly_get_md,
+    weekly_list,
+)
 from .llm import client
 
 logger = logging.getLogger("zhuan.agent")
 
 MAX_ROUNDS = 5  # 工具调用轮数上限，防止死循环
 WEEKLY_ROLES = ("safety_officer", "safety_supervisor", "project_manager")
+REPORT_ROLES = ("safety_officer", "safety_supervisor")
 
 ROLE_LABELS = {
     "safety_officer": "安全员",
@@ -28,60 +36,216 @@ ROLE_LABELS = {
     "responsible": "分包负责人",
 }
 
+
+class Terminal:
+    """终端工具输出：内容直接流式下发给用户，不经 LLM 改写（长周报等场景）。"""
+
+    def __init__(self, text: str, refs: list | None = None, weekly_id: int | None = None):
+        self.text = text
+        self.refs = refs or []
+        self.weekly_id = weekly_id
+
+
+class Tool:
+    """注册项：schema、执行体、角色白名单（None 不限）、前端状态文案。"""
+
+    def __init__(self, name: str, description: str, parameters: dict, executor, label: str, roles: tuple | None = None):
+        self.name = name
+        self.executor = executor
+        self.label = label
+        self.roles = roles
+        self.schema = {
+            "type": "function",
+            "function": {"name": name, "description": description, "parameters": parameters},
+        }
+
+
+def _exec_query_order(db: Session, user: User, project: Project, args: dict):
+    md = find_order_markdown(
+        db,
+        project.id,
+        order_no=str(args.get("order_no") or ""),
+        building=str(args.get("building") or ""),
+        floor=str(args.get("floor") or ""),
+    )
+    return md, []
+
+
+def _exec_list_orders(db: Session, user: User, project: Project, args: dict):
+    md = orders_list_markdown(
+        db,
+        user,
+        project.id,
+        status=str(args.get("status") or ""),
+        risk=str(args.get("risk") or ""),
+        keyword=str(args.get("keyword") or ""),
+        mine=bool(args.get("mine")),
+    )
+    return md, []
+
+
+def _exec_stats(db: Session, user: User, project: Project, args: dict):
+    return stats_overview(db, project), []
+
+
+def _exec_search(db: Session, user: User, project: Project, args: dict):
+    from ..rag.retriever import search as kb_search
+
+    query = str(args.get("query", ""))
+    regs = kb_search(db, query, k=3)
+    logger.info("Agent 检索规范 query=%s 命中=%d", query, len(regs))
+    refs = [{"doc_name": r["doc_name"], "clause_no": r["clause_no"], "title": r["title"]} for r in regs]
+    return json.dumps(regs, ensure_ascii=False), refs
+
+
+def _exec_generate_weekly(db: Session, user: User, project: Project, args: dict):
+    from ..services.weekly import generate_weekly, week_range
+
+    try:
+        offset = int(args.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    report = generate_weekly(db, *week_range(offset), user, project_id=project.id)
+    return Terminal(report.content_md, refs=[], weekly_id=report.id)
+
+
+def _exec_weekly_list(db: Session, user: User, project: Project, args: dict):
+    return weekly_list(db, project.id), []
+
+
+def _exec_weekly_get(db: Session, user: User, project: Project, args: dict):
+    try:
+        offset = int(args.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    md = weekly_get_md(db, project.id, offset)
+    if not md:
+        return {"error": "该周还没有周报，可以调用 generate_weekly_report 生成后再查看。"}, []
+    return Terminal(md, refs=[])
+
+
+def _exec_directory(db: Session, user: User, project: Project, args: dict):
+    return site_directory(db, project.id, str(args.get("kind") or "")), []
+
+
+def _exec_submit_hazard(db: Session, user: User, project: Project, args: dict):
+    return submit_hazard(db, user, project, str(args.get("text") or ""))
+
+
 TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "query_order_progress",
-            "description": "查询隐患整改工单的当前状态、责任人与最近流转记录。用户问进度/状态/到哪一步/整改完了吗时调用。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_no": {"type": "string", "description": "工单编号，如 ZA-20260926-001；用户提到编号时传入"},
-                    "building": {"type": "string", "description": "楼号，如 3号楼；未提到则不传"},
-                    "floor": {"type": "string", "description": "楼层，如 12层 或 B1层；未提到则不传"},
-                },
+    Tool(
+        "query_order_progress",
+        "查询单个隐患整改工单的当前状态、责任人与最近流转记录。用户问进度/状态/到哪一步/整改完了吗时调用。",
+        {
+            "type": "object",
+            "properties": {
+                "order_no": {"type": "string", "description": "工单编号，如 ZA-20260926-001；用户提到编号时传入"},
+                "building": {"type": "string", "description": "楼号，如 3号楼；未提到则不传"},
+                "floor": {"type": "string", "description": "楼层，如 12层 或 B1层；未提到则不传"},
             },
         },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "query_stats",
-            "description": "查询当前项目的隐患治理统计：累计/闭环/整改率/超期/风险分布。用户问统计、多少、整改率、超期情况时调用。",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_regulations",
-            "description": "检索安全规范知识库条款。回答规范要求类问题前必须先调用；一次检索不够时可换关键词多次调用。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "检索关键词，如：临边防护栏杆高度要求"},
-                },
-                "required": ["query"],
+        _exec_query_order,
+        "正在查询工单进度…",
+    ),
+    Tool(
+        "list_orders",
+        "按条件筛选工单列表（最多8条）。用户想看一批工单（如：待审核的工单、高风险隐患、超期的有哪些）时调用。",
+        {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["pending_review", "dispatched", "rectifying", "recheck", "closed", "rejected"], "description": "工单状态筛选，不传则不过滤"},
+                "risk": {"type": "string", "enum": ["低", "中", "高", "重大"], "description": "风险等级筛选，不传则不过滤"},
+                "keyword": {"type": "string", "description": "标题/描述关键词，如：临边、动火"},
+                "mine": {"type": "boolean", "description": "是否只看用户本人负责的工单"},
             },
         },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_weekly_report",
-            "description": "生成本周项目安全周报（Markdown）。用户要求周报/汇总本周安全情况时调用。",
-            "parameters": {"type": "object", "properties": {}},
+        _exec_list_orders,
+        "正在筛选工单…",
+    ),
+    Tool(
+        "query_stats",
+        "查询项目隐患治理全量统计：累计/闭环/整改率、状态与风险分布、隐患类型Top6、近8周上报与闭环趋势、超期明细。用户问统计、多少、整改率、趋势、超期情况时调用。",
+        {"type": "object", "properties": {}},
+        _exec_stats,
+        "正在汇总治理统计…",
+    ),
+    Tool(
+        "search_regulations",
+        "检索安全规范知识库条款。回答规范要求类问题前必须先调用；一次检索不够时可换关键词多次调用。",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "检索关键词，如：临边防护栏杆高度要求"},
+            },
+            "required": ["query"],
         },
-    },
+        _exec_search,
+        "正在检索规范条款…",
+    ),
+    Tool(
+        "generate_weekly_report",
+        "生成项目安全周报（Markdown）并保存。offset=-1 表示上周，默认本周。",
+        {
+            "type": "object",
+            "properties": {
+                "offset": {"type": "integer", "description": "周偏移：0=本周，-1=上周，默认0"},
+            },
+        },
+        _exec_generate_weekly,
+        "正在生成安全周报…",
+        roles=WEEKLY_ROLES,
+    ),
+    Tool(
+        "list_weekly_reports",
+        "查询历史周报列表（最近10篇的周期与摘要）。用户想看有哪些周报时调用。",
+        {"type": "object", "properties": {}},
+        _exec_weekly_list,
+        "正在查询历史周报…",
+        roles=WEEKLY_ROLES,
+    ),
+    Tool(
+        "get_weekly_report",
+        "取某一篇历史周报的全文。offset=0 本周、-1 上周，以此类推。",
+        {
+            "type": "object",
+            "properties": {
+                "offset": {"type": "integer", "description": "周偏移：0=本周，-1=上周，默认0"},
+            },
+        },
+        _exec_weekly_get,
+        "正在调取周报全文…",
+        roles=WEEKLY_ROLES,
+    ),
+    Tool(
+        "query_site_directory",
+        "查询项目的责任区域、分包单位、分包负责人目录。回答'3号楼是谁的责任区''有哪些分包''负责人是谁'类问题时调用。",
+        {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["zones", "subcontractors", "responsible"], "description": "zones=责任区域，subcontractors=分包单位，responsible=分包负责人"},
+            },
+            "required": ["kind"],
+        },
+        _exec_directory,
+        "正在查询项目目录…",
+    ),
+    Tool(
+        "submit_hazard_report",
+        "代用户提交隐患上报：AI 抽取信息、匹配责任人与规范依据，生成待审核工单。用户明确要求上报/建单时才调用；信息不足时工具会返回追问。",
+        {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "用户对隐患的完整描述（位置+问题），把对话中已确认的信息合并成一段话"},
+            },
+            "required": ["text"],
+        },
+        _exec_submit_hazard,
+        "正在提交隐患上报…",
+        roles=REPORT_ROLES,
+    ),
 ]
 
-TOOL_LABELS = {
-    "query_order_progress": "正在查询工单进度…",
-    "query_stats": "正在汇总治理统计…",
-    "search_regulations": "正在检索规范条款…",
-    "generate_weekly_report": "正在生成安全周报…",
-}
+TOOL_MAP = {t.name: t for t in TOOLS}
 
 
 def _system_prompt(user: User, project: Project) -> str:
@@ -90,11 +254,16 @@ def _system_prompt(user: User, project: Project) -> str:
         f"你是筑安云的现场安全AI助手，服务对象是{role}（姓名：{user.name}），当前项目「{project.name}」，"
         "回答使用 Markdown 中文。\n"
         "规则：\n"
-        "1. 涉及工单、统计数字、规范条款的问题，必须先调用工具获取真实数据，禁止编造工单号、数字和条款。\n"
+        "1. 涉及工单、统计数字、规范条款、区域/分包/周报的问题，必须先调用工具获取真实数据，禁止编造工单号、数字和条款。\n"
         "2. 用户消息省略了上文主语时（如追问「那2号楼呢」），结合对话历史理解后再选工具和参数。\n"
         "3. 规范依据一律来自 search_regulations 返回的条款，引用时标注《规范名》条款号；检索不到就明确说明。\n"
-        "4. 调用 generate_weekly_report 后，把返回的周报内容原样输出，不要改写或增删。\n"
-        "5. 不需要工具的闲聊/引导类问题直接回答，并适当提示你能帮做什么（查进度、看统计、查规范、生成周报）。"
+        "4. 调用 generate_weekly_report / get_weekly_report 后，把返回内容原样输出，不要改写或增删。\n"
+        "5. 用户想报隐患时调用 submit_hazard_report：若结果带 need_clarify=true，把其中的 question 原样问用户，"
+        "拿到补充信息后把对话中已确认的内容合并成一段完整描述再次调用；成功后提醒用户工单已生成、"
+        "待安全员在「整改工单」页审核派单。\n"
+        "6. 工具返回 error 时，向用户委婉说明原因并给出替代建议。\n"
+        "7. 与平台业务无关的问题可简要回答，随后引导回你的能力：查工单进度、筛选工单、治理统计、查规范、"
+        "查/生成周报、上报隐患、查区域与分包目录。"
     )
 
 
@@ -104,16 +273,6 @@ def _history_messages(history: list[dict]) -> list[dict]:
         for h in history
         if h.get("role") in ("user", "assistant") and h.get("content")
     ]
-
-
-def _exec_search(db: Session, query: str) -> tuple[str, list[dict]]:
-    regs = kb_search(db, query, k=3)
-    logger.info("Agent 检索规范 query=%s 命中=%d", query, len(regs))
-    refs = [
-        {"doc_name": r["doc_name"], "clause_no": r["clause_no"], "title": r["title"]}
-        for r in regs
-    ]
-    return json.dumps(regs, ensure_ascii=False), refs
 
 
 def _dedupe_refs(refs: list[dict]) -> list[dict]:
@@ -142,7 +301,7 @@ def _stream_llm_round(cfg, messages: list[dict]) -> tuple[list[str], dict[int, d
         stream = client(cfg).chat.completions.create(
             model=cfg.qwen_text_model,
             messages=messages,
-            tools=TOOLS,
+            tools=[t.schema for t in TOOLS],
             stream=True,
             temperature=0.4,
         )
@@ -222,37 +381,30 @@ def run_agent(
             except json.JSONDecodeError:
                 args = {}
             logger.info("Agent 工具调用 %s args=%s", name, args)
-            yield {"type": "tool", "name": name, "label": TOOL_LABELS.get(name, name), "args": args}
+            yield {"type": "tool", "name": name, "label": TOOL_MAP[name].label if name in TOOL_MAP else name, "args": args}
 
-            if name == "generate_weekly_report":
-                if user.role not in WEEKLY_ROLES:
-                    result = {"error": "周报生成权限为安全员/安全总监/项目经理，请向用户说明，并建议改问进度或统计。"}
-                else:
-                    report = generate_weekly(db, *week_range(0), user, project_id=project.id)
-                    weekly_id = report.id
-                    # 周报内容直接原样输出，不走 LLM 改写
-                    yield {"type": "refs", "refs": []}
-                    for piece in _chunk(report.content_md):
+            tool = TOOL_MAP.get(name)
+            if tool is None:
+                result, round_refs = {"error": f"未知工具 {name}"}, []
+            elif tool.roles and user.role not in tool.roles:
+                allowed = "、".join(ROLE_LABELS.get(r, r) for r in tool.roles)
+                result = {"error": f"当前角色（{ROLE_LABELS.get(user.role, user.role)}）无权执行该操作，"
+                                    f"该操作权限为：{allowed}。请向用户说明，并建议其他可用的帮助。"}
+                round_refs = []
+            else:
+                out = tool.executor(db, user, project, args)
+                if isinstance(out, Terminal):
+                    weekly_id = out.weekly_id
+                    refs += out.refs
+                    yield {"type": "refs", "refs": _dedupe_refs(refs)}
+                    for piece in _chunk(out.text):
                         streamed_any = True
                         yield {"type": "delta", "text": piece}
                     yield {"type": "done", "weekly_id": weekly_id}
                     return
-            elif name == "query_order_progress":
-                result = find_order_markdown(
-                    db,
-                    project.id,
-                    order_no=str(args.get("order_no") or ""),
-                    building=str(args.get("building") or ""),
-                    floor=str(args.get("floor") or ""),
-                )
-            elif name == "query_stats":
-                result = stats_markdown(db, project.id)
-            elif name == "search_regulations":
-                result, round_refs = _exec_search(db, str(args.get("query", "")))
-                refs += round_refs
-            else:
-                result = {"error": f"未知工具 {name}"}
+                result, round_refs = out
 
+            refs += round_refs
             messages.append(
                 {
                     "role": "tool",

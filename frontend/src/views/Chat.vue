@@ -2,7 +2,7 @@
   <div class="page-shell">
     <div class="page-intro">
       <div class="page-title">现场安全智询</div>
-      <div class="page-sub">查询工单进度、治理统计和规范条款，也可以直接生成安全周报。</div>
+      <div class="page-sub">查进度、筛工单、看统计、查规范、调周报，也可以直接对话上报隐患。</div>
     </div>
 
     <div class="chat-layout">
@@ -82,10 +82,12 @@ const GREETING = [
   '您好，我是筑安云 AI 安全助手。',
   '',
   '我可以帮你：',
-  '- 查询工单处置进度',
-  '- 汇总本周整改情况',
-  '- 检索现场安全规范',
-  '- 生成项目安全周报',
+  '- 查询工单处置进度，按状态/风险筛选工单',
+  '- 汇总整改统计、超期与近8周趋势',
+  '- 检索现场安全规范条款',
+  '- 查看或生成项目安全周报',
+  '- 查询责任区域、分包单位与负责人',
+  '- 对话式上报隐患，AI 自动匹配责任人',
 ].join('\n')
 
 const input = ref('')
@@ -95,7 +97,7 @@ const sessions = ref([])
 const sessionId = ref(null)
 const messages = ref([{ me: false, text: GREETING, refs: [], weeklyId: null }])
 
-const quick = ['3号楼12层的隐患进度', '本周整改情况统计', '临边防护有哪些规范要求', '生成安全周报']
+const quick = ['3号楼12层的隐患进度', '本周整改情况统计', '临边防护有哪些规范要求', '有哪些分包单位', '生成安全周报']
 
 // 会话指针只存"上次打开的会话 id"，消息正文全部以服务端为准
 function pointerKey() {
