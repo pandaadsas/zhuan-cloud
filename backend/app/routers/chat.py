@@ -1,160 +1,322 @@
-"""AI对话助手：进度查询 / 统计速览 / 知识库问答 / 周报生成。"""
+"""AI对话助手：LLM Agent（tool-calling + 多轮 + SSE 流式）为主，规则引擎降级。
+
+会话持久化（transcript-as-log）：每个会话是 chat_sessions + chat_messages 中的
+一条 append-only 事件日志；恢复会话 = 按 session_id 重放消息行。
+"""
+import json
 import logging
-import re
-from collections import Counter
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..agents.llm import chat_text, llm_ready
+from ..agents.chat_agent import run_agent
+from ..agents.chat_tools import classify, kb_answer, progress_from_msg, stats_markdown
+from ..agents.llm import llm_ready
 from ..auth import get_current_user
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..deps import current_project
-from ..models import Project, User, WorkOrder
-from ..rag.retriever import search as kb_search
+from ..models import ChatMessage, ChatSession, Project, User
 from ..schemas import ChatIn
-from ..serializers import STATUS_LABELS
 from ..services.weekly import generate_weekly, week_range
 
 logger = logging.getLogger("zhuan.chat")
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
-
-def classify(msg: str) -> str:
-    if any(k in msg for k in ("周报", "汇总一份", "安全情况汇总", "本周安全")):
-        return "weekly"
-    if re.search(r"ZA-\d{8}-\d{3}", msg) or any(
-        k in msg for k in ("进度", "到哪一步", "处理到哪", "工单状态", "整改完了吗")
-    ):
-        return "progress"
-    if any(k in msg for k in ("统计", "多少", "几单", "几份", "整改率", "超期", "分布", "情况")):
-        return "stats"
-    return "kb"
+HISTORY_TURNS = 10  # 注入 agent 的最大历史条数
+HISTORY_TURN_CHARS = 500  # 单条历史截断长度，防止上下文膨胀
+LIST_LIMIT = 50  # 会话列表 / 消息恢复的条数上限
+TITLE_CHARS = 20  # 会话标题截取长度
 
 
-def handle_progress(db: Session, msg: str, project_id: int | None = None) -> tuple[str, list]:
-    query = db.query(WorkOrder)
-    if project_id is not None:
-        query = query.filter(WorkOrder.project_id == project_id)
-    m = re.search(r"ZA-\d{8}-\d{3}", msg)
-    order = None
-    if m:
-        order = query.filter(WorkOrder.order_no == m.group(0)).first()
+def _sse(event: dict) -> bytes:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+def _rule_fallback(db, user: User, project: Project, msg: str):
+    """规则降级链路：mock 模式 / 未配 key / Agent 首轮失败时启用，协议事件与 Agent 一致。"""
+    if not msg:
+        yield {"type": "delta", "text": "请输入您的问题，例如：3号楼12层的隐患整改到哪一步了？"}
+        yield {"type": "refs", "refs": []}
+        yield {"type": "done", "weekly_id": None}
+        return
+
+    intent = classify(msg)
+    logger.info("AI对话(规则降级) user=%s(%s) intent=%s project=%s msg=%s", user.name, user.role, intent, project.name, msg[:50])
+    refs: list[dict] = []
+    weekly_id = None
+
+    if intent == "weekly":
+        if user.role not in ("safety_officer", "safety_supervisor", "project_manager"):
+            reply = "周报生成权限为安全员/安全总监/项目经理。如需了解整改情况，可以直接问我进度或统计。"
+        else:
+            start, end = week_range(0)
+            report = generate_weekly(db, start, end, user, project_id=project.id)
+            reply = report.content_md
+            weekly_id = report.id
+    elif intent == "progress":
+        reply = progress_from_msg(db, msg, project_id=project.id)
+    elif intent == "stats":
+        reply = stats_markdown(db, project_id=project.id)
     else:
-        bm = re.search(r"(\d{1,2})\s*[#号楼栋]", msg)
-        fm = re.search(r"(B\d{1,2}|负?\d{1,2})\s*层", msg)
-        if bm:
-            query = query.filter(WorkOrder.building.like(f"%{bm.group(1)}号楼%"))
-        if fm:
-            query = query.filter(WorkOrder.floor == fm.group(0).replace(" ", ""))
-        order = query.order_by(WorkOrder.created_at.desc()).first()
+        reply, refs = kb_answer(db, msg)
 
-    if not order:
-        return (
-            "未找到匹配的工单。请提供工单编号（如 ZA-20260926-001），或说明位置（如：3号楼12层的隐患进度）。"
-        ), []
+    yield {"type": "delta", "text": reply}
+    yield {"type": "refs", "refs": refs}
+    yield {"type": "done", "weekly_id": weekly_id}
 
-    lines = [
-        f"**{order.order_no}｜{order.title}**",
-        f"- 当前状态：**{STATUS_LABELS.get(order.status, order.status)}**",
-        f"- 风险等级：{order.risk_level}｜责任人：{order.responsible_user.name if order.responsible_user else '未指定'}",
-        f"- 整改期限：{order.deadline.strftime('%m-%d %H:%M') if order.deadline else '未设定'}"
-        + ("｜⚠️已超期" if order.overdue else ""),
-    ]
-    lines.append("- 最近流转：")
-    from ..models import OrderEvent
 
-    recent = (
-        db.query(OrderEvent)
-        .filter(OrderEvent.order_id == order.id)
-        .order_by(OrderEvent.created_at.desc())
-        .limit(4)
+def _load_history(db: Session, session_id: int) -> list[dict]:
+    """从库里取最近几轮消息注入 agent（换设备续聊上下文不丢）。"""
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id, ChatMessage.content != "")
+        .order_by(ChatMessage.id.desc())
+        .limit(HISTORY_TURNS)
         .all()
     )
-    for e in reversed(recent):
-        lines.append(f"  - {e.created_at.strftime('%m-%d %H:%M')} {e.actor}：{e.action}" + (f"（{e.detail}）" if e.detail else ""))
-    return "\n".join(lines), []
+    rows.reverse()
+    return [{"role": r.role, "content": r.content[:HISTORY_TURN_CHARS]} for r in rows]
 
 
-def handle_stats(db: Session, msg: str, project_id: int | None = None) -> tuple[str, list]:
-    scope = db.query(WorkOrder)
-    if project_id is not None:
-        scope = scope.filter(WorkOrder.project_id == project_id)
-    total = scope.count()
-    closed = scope.filter(WorkOrder.status == "closed").count()
-    open_orders = scope.filter(WorkOrder.status.in_(("pending_review", "dispatched", "rectifying", "recheck"))).all()
-    overdue = [o for o in open_orders if o.overdue]
-    risk_open = dict(Counter(o.risk_level for o in open_orders))
-    lines = [
-        "**当前隐患治理概况**",
-        f"- 累计工单 {total} 份，已闭环 {closed} 份，整改率 **{closed / total * 100:.1f}%**" if total else "- 暂无工单数据",
-        f"- 在办工单 {len(open_orders)} 份（" + "、".join(f"{k}{v}" for k, v in risk_open.items()) + "）",
-        f"- 超期未闭环 **{len(overdue)}** 份" + ("，建议优先督办" if overdue else ""),
-    ]
-    if overdue:
-        for o in overdue[:5]:
-            lines.append(f"  - {o.order_no} {o.title}（{o.risk_level}风险｜{o.responsible_user.name if o.responsible_user else '未指定'}）")
-    return "\n".join(lines), []
-
-
-def handle_kb(db: Session, msg: str) -> tuple[str, list]:
-    regs = kb_search(db, msg, k=3)
-    logger.info("知识库检索 命中=%d", len(regs))
-    refs = [
-        {"doc_name": r["doc_name"], "clause_no": r["clause_no"], "title": r["title"]}
-        for r in regs
-    ]
-    if not regs:
-        return "当前知识库未检索到足够依据，建议咨询项目安全总监或补充更具体的问题。", []
-    if llm_ready():
-        ctx = "\n".join(f"《{r['doc_name']}》{r['clause_no']} {r['title']}：{r['content']}" for r in regs)
-        answer = chat_text(
-            "你是建筑工地安全知识助手，依据给定条款回答问题，并标注条款出处；检索不到的内容明确说明。120字以内。",
-            f"问题：{msg}\n检索条款：\n{ctx}",
+def _own_session(db: Session, user: User, project: Project, session_id: int) -> ChatSession:
+    """按 id 取会话，强制归属校验：非本人/非当前项目一律 404，防越权读取。"""
+    s = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+            ChatSession.project_id == project.id,
         )
-        if answer:
-            return answer, refs
-    lines = ["根据安全知识库检索，相关要求如下：", ""]
-    for i, r in enumerate(regs, 1):
-        lines.append(f"{i}. 《{r['doc_name']}》{r['clause_no']}（{r['title']}）：{r['content']}")
-    lines.append("")
-    lines.append("建议按上述条款组织落实；如需生成整改工单，请到「隐患上报」页面提交。")
-    return "\n".join(lines), refs
+        .first()
+    )
+    if not s:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return s
 
 
 @router.post("")
 def chat(
     payload: ChatIn,
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    """SSE 流式对话。事件：tool（工具调用）/ delta（回答增量）/ refs（条款引用）/ done（结束，携带 session_id）。"""
+
+    msg = (payload.message or "").strip()
+
+    def event_stream():
+        # 流式响应期间依赖注入的 db 会话已不可靠，这里自建会话；user/project 属性已在鉴权时加载
+        db = SessionLocal()
+        session: ChatSession | None = None
+        acc = {"content": "", "refs": None, "tool_trace": [], "weekly_id": None}
+        persisted = False
+
+        def persist() -> int | None:
+            """把本轮对话一次性落库（会话惰性创建，标题取首条消息）。返回 session_id。"""
+            nonlocal persisted, session
+            if persisted or not msg:
+                return session.id if session else None
+            persisted = True
+            try:
+                if session is None:
+                    session = ChatSession(user_id=user.id, project_id=project.id, title=msg[:TITLE_CHARS])
+                    db.add(session)
+                    db.flush()
+                db.add(ChatMessage(session_id=session.id, role="user", content=msg))
+                if acc["content"] or acc["tool_trace"]:
+                    db.add(
+                        ChatMessage(
+                            session_id=session.id,
+                            role="assistant",
+                            content=acc["content"],
+                            refs=acc["refs"],
+                            tool_trace=acc["tool_trace"] or None,
+                            weekly_id=acc["weekly_id"],
+                        )
+                    )
+                session.updated_at = datetime.now()
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception("对话落库失败 session=%s", session.id if session else None)
+            return session.id if session else None
+
+        def handle(ev: dict) -> dict:
+            """转发前累积事件内容，供 finally 兜底落库。"""
+            t = ev.get("type")
+            if t == "delta":
+                acc["content"] += ev.get("text", "")
+            elif t == "tool":
+                acc["tool_trace"].append(
+                    {"name": ev.get("name"), "args": ev.get("args"), "at": datetime.now().strftime("%H:%M:%S")}
+                )
+            elif t == "refs":
+                acc["refs"] = ev.get("refs") or None
+            elif t == "done":
+                acc["weekly_id"] = ev.get("weekly_id")
+            return ev
+
+        def stream(gen):
+            for ev in gen:
+                ev = handle(ev)
+                if ev.get("type") == "done":
+                    # done 事件需要在流结束前把 session_id 带回前端，落库提前到此处执行
+                    ev = dict(ev, session_id=persist())
+                yield _sse(ev)
+
+        try:
+            if payload.session_id:
+                # 归属校验失败时不报错，静默当作新会话处理（done 会返回新 id）
+                session = (
+                    db.query(ChatSession)
+                    .filter(
+                        ChatSession.id == payload.session_id,
+                        ChatSession.user_id == user.id,
+                        ChatSession.project_id == project.id,
+                    )
+                    .first()
+                )
+            history = _load_history(db, session.id) if session else []
+            logger.info(
+                "AI对话 user=%s(%s) session=%s project=%s msg=%s",
+                user.name, user.role, session.id if session else None, project.name, msg[:50],
+            )
+
+            if msg and llm_ready():
+                try:
+                    yield from stream(run_agent(db, user, project, msg, history))
+                    return
+                except Exception:
+                    logger.exception("Agent 链路失败，降级规则引擎 user=%s msg=%s", user.name, msg[:50])
+            yield from stream(_rule_fallback(db, user, project, msg))
+        finally:
+            persist()  # 客户端中断 / 异常时兜底落库
+            db.close()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/sessions")
+def list_sessions(
+    limit: int = 20,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     project: Project = Depends(current_project),
 ):
-    msg = (payload.message or "").strip()
-    if not msg:
-        return {"intent": "empty", "reply": "请输入您的问题，例如：3号楼12层的隐患整改到哪一步了？"}
-    intent = classify(msg)
-    logger.info("AI对话 user=%s(%s) intent=%s project=%s msg=%s", user.name, user.role, intent, project.name, msg[:50])
-
-    if intent == "weekly":
-        if user.role not in ("safety_officer", "safety_supervisor", "project_manager"):
-            return {
-                "intent": "weekly",
-                "reply": "周报生成权限为安全员/安全总监/项目经理。如需了解整改情况，可以直接问我进度或统计。",
-            }
-        start, end = week_range(0)
-        report = generate_weekly(db, start, end, user, project_id=project.id)
-        return {
-            "intent": "weekly",
-            "reply": report.content_md,
-            "weekly_id": report.id,
-            "refs": [],
+    rows = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user.id, ChatSession.project_id == project.id)
+        .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+        .limit(min(max(limit, 1), LIST_LIMIT))
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "updated_at": s.updated_at.strftime("%m-%d %H:%M") if s.updated_at else "",
         }
-    if intent == "progress":
-        reply, refs = handle_progress(db, msg, project_id=project.id)
-        return {"intent": intent, "reply": reply, "refs": refs}
-    if intent == "stats":
-        reply, refs = handle_stats(db, msg, project_id=project.id)
-        return {"intent": intent, "reply": reply, "refs": refs}
-    reply, refs = handle_kb(db, msg)
-    return {"intent": intent, "reply": reply, "refs": refs}
+        for s in rows
+    ]
+
+
+@router.get("/sessions/{session_id}/messages")
+def session_messages(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    s = _own_session(db, user, project, session_id)
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == s.id)
+        .order_by(ChatMessage.id.desc())
+        .limit(LIST_LIMIT)
+        .all()
+    )
+    rows.reverse()
+    return [
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "refs": m.refs or [],
+            "tool_trace": m.tool_trace or [],
+            "weekly_id": m.weekly_id,
+            "created_at": m.created_at.strftime("%m-%d %H:%M") if m.created_at else "",
+        }
+        for m in rows
+    ]
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    s = _own_session(db, user, project, session_id)
+    db.query(ChatMessage).filter(ChatMessage.session_id == s.id).delete()
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/sessions/{session_id}/export")
+def export_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    """把会话导出为 Codex rollout 同款 JSONL（首行 meta，逐行事件），用于留证审计。"""
+    s = _own_session(db, user, project, session_id)
+    rows = db.query(ChatMessage).filter(ChatMessage.session_id == s.id).order_by(ChatMessage.id.asc()).all()
+
+    def dump(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False)
+
+    lines = [
+        dump(
+            {
+                "timestamp": s.created_at.isoformat() if s.created_at else "",
+                "type": "session_meta",
+                "payload": {
+                    "session_id": s.id,
+                    "user_id": s.user_id,
+                    "project_id": s.project_id,
+                    "title": s.title,
+                    "generator": "zhuan-cloud",
+                },
+            }
+        )
+    ]
+    for m in rows:
+        lines.append(
+            dump(
+                {
+                    "timestamp": m.created_at.isoformat() if m.created_at else "",
+                    "type": "message",
+                    "payload": {
+                        "role": m.role,
+                        "content": m.content,
+                        "refs": m.refs,
+                        "tool_trace": m.tool_trace,
+                        "weekly_id": m.weekly_id,
+                    },
+                }
+            )
+        )
+    return Response(
+        "\n".join(lines) + "\n",
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="chat-session-{s.id}.jsonl"'},
+    )

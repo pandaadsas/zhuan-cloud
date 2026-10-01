@@ -316,3 +316,48 @@ class AppConfig(Base):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class ChatSession(Base):
+    """AI 对话会话元数据（≈ Codex rollout 文件的 session_meta 头）。
+
+    字段说明:
+        user_id: 归属用户，会话按账号隔离
+        project_id: 归属项目，上下文中的工单/统计数据都是项目级
+        title: 会话标题（首条用户消息截前 20 字）
+    """
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    title: Mapped[str] = mapped_column(String(60), default="新的对话")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ChatMessage(Base):
+    """对话事件行，append-only：只插入不更新，重新生成分支由 parent_message_id 表达。
+
+    字段说明:
+        session_id: 所属会话
+        parent_message_id: 重新生成时指向被替代的 assistant 行（一期 UI 不启用，字段预留）
+        role: user / assistant
+        content: 消息正文（原始 Markdown）
+        refs: 回答依据的规范条款列表（assistant）
+        tool_trace: Agent 工具调用轨迹 [{name, args, at}]（assistant）
+        weekly_id: 关联的安全周报 id
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id"), index=True)
+    parent_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    role: Mapped[str] = mapped_column(String(12))
+    content: Mapped[str] = mapped_column(Text, default="")
+    refs: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tool_trace: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    weekly_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

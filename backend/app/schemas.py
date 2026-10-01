@@ -20,6 +20,7 @@ class ActionIn(BaseModel):
 
 class ChatIn(BaseModel):
     message: str
+    session_id: int | None = None  # 空 = 开启新会话，后端落库后经 done 事件返回 id
 
 
 class WeeklyGenIn(BaseModel):
