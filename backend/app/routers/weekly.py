@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -9,6 +11,7 @@ from ..schemas import WeeklyGenIn
 from ..services.exporter import weekly_to_docx
 from ..services.weekly import generate_weekly, week_range
 
+logger = logging.getLogger("zhuan.weekly")
 router = APIRouter(prefix="/api/weekly", tags=["weekly"])
 
 
@@ -19,7 +22,9 @@ def generate(
     user: User = Depends(require_roles("safety_officer", "safety_supervisor", "project_manager")),
 ):
     start, end = week_range(payload.offset)
+    logger.info("生成周报 week=%s~%s user=%s", start, end, user.name)
     report = generate_weekly(db, start, end, user)
+    logger.info("周报生成完成 weekly_id=%s", report.id)
     return {"id": report.id, "week": f"{start} ~ {end}", "content_md": report.content_md}
 
 

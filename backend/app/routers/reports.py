@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from ..models import Report, User, WorkOrder, Zone
 from ..schemas import ReportIn
 from ..serializers import order_to_dict
 
+logger = logging.getLogger("zhuan.reports")
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
@@ -28,6 +30,7 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
         raise HTTPException(status_code=400, detail="请描述隐患内容（至少5个字），如：3号楼12层临边防护缺失")
 
     project = get_current_project(db)
+    logger.info("收到隐患上报 user=%s type=%s len=%d", user.name, payload.input_type, len(text))
     result = process_report(db, text, payload.input_type, project_id=project.id)
     report = Report(
         project_id=project.id,
@@ -41,6 +44,7 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
     db.refresh(report)
 
     if result["need_clarify"]:
+        logger.info("隐患上报需澄清 report_id=%s question=%s", report.id, result["question"])
         return {
             "need_clarify": True,
             "question": result["question"],
@@ -90,6 +94,8 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
     )
     db.commit()
     db.refresh(order)
+    logger.info("AI 生成工单 order=%s risk=%s engine=%s regs=%d",
+                order.order_no, order.risk_level, draft["extraction_engine"], len(draft["regulation_refs"]))
     return {
         "need_clarify": False,
         "order": order_to_dict(order),

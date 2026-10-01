@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from ..models import OrderEvent, User, WorkOrder
 from ..schemas import ActionIn
 from ..serializers import event_to_dict, order_to_dict
 
+logger = logging.getLogger("zhuan.orders")
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 OPEN_STATUSES = ("pending_review", "dispatched", "rectifying", "recheck")
@@ -27,6 +29,8 @@ def sweep_overdue(db: Session) -> int:
         .update({WorkOrder.overdue: True}, synchronize_session=False)
     )
     db.commit()
+    if n:
+        logger.info("超期巡检：%d 个工单被标记为超期", n)
     return n
 
 
@@ -162,4 +166,6 @@ def order_action(
     o.updated_at = now
     db.commit()
     db.refresh(o)
+    logger.info("工单操作 order=%s action=%s operator=%s(%s) -> status=%s",
+                o.order_no, action, user.name, user.role, o.status)
     return {"order": order_to_dict(o)}

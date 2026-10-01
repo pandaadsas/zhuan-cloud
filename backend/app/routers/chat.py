@@ -94,6 +94,7 @@ def handle_stats(db: Session, msg: str) -> tuple[str, list]:
 
 def handle_kb(db: Session, msg: str) -> tuple[str, list]:
     regs = kb_search(db, msg, k=3)
+    logger.info("知识库检索 命中=%d", len(regs))
     refs = [
         {"doc_name": r["doc_name"], "clause_no": r["clause_no"], "title": r["title"]}
         for r in regs
@@ -122,6 +123,7 @@ def chat(payload: ChatIn, db: Session = Depends(get_db), user: User = Depends(ge
     if not msg:
         return {"intent": "empty", "reply": "请输入您的问题，例如：3号楼12层的隐患整改到哪一步了？"}
     intent = classify(msg)
+    logger.info("AI对话 user=%s(%s) intent=%s msg=%s", user.name, user.role, intent, msg[:50])
 
     if intent == "weekly":
         if user.role not in ("safety_officer", "safety_supervisor", "project_manager"):

@@ -1,3 +1,4 @@
+import logging
 import random
 import re
 from datetime import datetime, timedelta
@@ -13,12 +14,20 @@ from ..serializers import user_public
 from ..services.mailer import send_code_email, smtp_ready
 from ..services.sms import send_code_sms, sms_ready
 
+logger = logging.getLogger("zhuan.auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
 PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
 CODE_TTL_MINUTES = 10
 SEND_INTERVAL_SECONDS = 60
+
+
+def _mask(target: str) -> str:
+    """日志中脱敏展示邮箱/手机号。"""
+    if len(target) <= 4:
+        return "***"
+    return target[:3] + "****" + target[-3:]
 
 
 class LoginIn(BaseModel):
@@ -54,7 +63,9 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         .first()
     )
     if not user or not verify_password(payload.password, user.password_hash):
+        logger.warning("登录失败 ident=%s（账号或密码错误）", ident)
         raise HTTPException(status_code=400, detail="账号或密码错误")
+    logger.info("登录成功 username=%s role=%s", user.username, user.role)
     return {"token": create_token(user.id), "user": user_public(user)}
 
 
@@ -89,6 +100,7 @@ def send_code(payload: SendCodeIn, db: Session = Depends(get_db)):
         .first()
     )
     if last and (datetime.now() - last.created_at).total_seconds() < SEND_INTERVAL_SECONDS:
+        logger.warning("验证码发送过于频繁 channel=%s target=%s", channel, _mask(target))
         raise HTTPException(status_code=429, detail="发送过于频繁，请稍后再试")
 
     code = f"{random.randint(0, 999999):06d}"
@@ -102,6 +114,7 @@ def send_code(payload: SendCodeIn, db: Session = Depends(get_db)):
     )
     db.commit()
     sender()
+    logger.info("验证码已发送 channel=%s target=%s ttl=%dmin", channel, _mask(target), CODE_TTL_MINUTES)
     return {"ok": True, "expires_in": CODE_TTL_MINUTES * 60}
 
 
@@ -169,4 +182,6 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     record.used = True
     db.commit()
     db.refresh(user)
+    logger.info("新用户注册 username=%s name=%s role=%s channel=%s target=%s",
+                username, user.name, role, channel, _mask(target))
     return {"token": create_token(user.id), "user": user_public(user)}
