@@ -21,6 +21,7 @@ class ActionIn(BaseModel):
 class ChatIn(BaseModel):
     message: str
     session_id: int | None = None  # 空 = 开启新会话，后端落库后经 done 事件返回 id
+    assistant: str = "safety"  # 智能助手：safety=AI 安全助手 / pm=项目管理助手（仅项目经理）
 
 
 class WeeklyGenIn(BaseModel):

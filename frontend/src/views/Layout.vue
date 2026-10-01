@@ -44,7 +44,10 @@
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="main"><router-view /></el-main>
+      <el-main class="main">
+        <!-- key 绑定路径：/chat 与 /pm-chat 共用 Chat.vue，不重建组件会导致助手画像不切换 -->
+        <router-view :key="route.path" />
+      </el-main>
     </el-container>
   </el-container>
 </template>
@@ -52,7 +55,7 @@
 <script setup>
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { DataBoard, Camera, Tickets, Document, ChatDotRound, Setting, OfficeBuilding } from '@element-plus/icons-vue'
+import { DataBoard, Camera, Tickets, Document, ChatDotRound, Setting, OfficeBuilding, Management } from '@element-plus/icons-vue'
 import { userStore, useUserStore, projectStore, setProjectList, setProject, currentProject } from '../store'
 import http from '../api'
 import BrandMark from '../components/BrandMark.vue'
@@ -68,12 +71,14 @@ const pages = {
   '/orders': { title: '整改工单', context: '跟进处置过程与闭环状态' },
   '/weekly': { title: '安全周报', context: '汇总本周治理成效与风险趋势' },
   '/chat': { title: 'AI 安全助手', context: '查询进度、统计与规范条款' },
+  '/pm-chat': { title: '项目管理助手', context: '对话式管理项目、责任区域与分包' },
   '/settings': { title: '系统设置', context: '管理 AI 引擎与模型配置' },
 }
 const currentPage = computed(() => pages[route.path] || { title: '筑安云', context: '工地安全智安协同平台' })
 const userInitial = computed(() => (user.value.name || user.value.username || '筑').slice(0, 1))
 const canReport = computed(() => ['safety_officer', 'safety_supervisor'].includes(user.value.role))
 const canWeekly = computed(() => ['safety_officer', 'safety_supervisor', 'project_manager'].includes(user.value.role))
+const isPM = computed(() => user.value.role === 'project_manager')
 const projectsLoading = ref(false)
 
 async function loadProjects() {
@@ -100,6 +105,7 @@ const NavPanel = defineComponent({
       { path: '/orders', label: '整改工单', icon: Tickets, show: true },
       { path: '/weekly', label: '安全周报', icon: Document, show: canWeekly.value },
       { path: '/chat', label: 'AI 安全助手', icon: ChatDotRound, show: true },
+      { path: '/pm-chat', label: '项目管理助手', icon: Management, show: isPM.value },
       { path: '/projects', label: '项目管理', icon: OfficeBuilding, show: true },
       { path: '/settings', label: '系统设置', icon: Setting, show: true },
     ].filter((item) => item.show))

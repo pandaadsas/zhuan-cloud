@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..agents.chat_agent import run_agent
+from ..agents.chat_agent import ASSISTANTS, run_agent
 from ..agents.chat_tools import classify, kb_answer, progress_from_msg, stats_markdown
 from ..agents.llm import llm_ready
 from ..auth import get_current_user
@@ -19,6 +19,7 @@ from ..database import SessionLocal, get_db
 from ..deps import current_project
 from ..models import ChatMessage, ChatSession, Project, User
 from ..schemas import ChatIn
+from ..serializers import ROLE_LABELS
 from ..services.weekly import generate_weekly, week_range
 
 logger = logging.getLogger("zhuan.chat")
@@ -67,6 +68,16 @@ def _rule_fallback(db, user: User, project: Project, msg: str):
     yield {"type": "done", "weekly_id": weekly_id}
 
 
+def _pm_fallback(msg: str):
+    """项目管理助手的降级链路：无规则引擎可复用（安全类意图不适用），给出明确提示。"""
+    if not msg:
+        yield {"type": "delta", "text": "请输入您的指令，例如：新增一个项目，名称为滨江苑二期。"}
+    else:
+        yield {"type": "delta", "text": "AI 引擎暂时不可用，项目管理助手暂无法执行操作。请稍后重试，或先到「项目管理」页面手动操作。"}
+    yield {"type": "refs", "refs": []}
+    yield {"type": "done", "weekly_id": None}
+
+
 def _load_history(db: Session, session_id: int) -> list[dict]:
     """从库里取最近几轮消息注入 agent（换设备续聊上下文不丢）。"""
     rows = (
@@ -104,6 +115,13 @@ def chat(
 ):
     """SSE 流式对话。事件：tool（工具调用）/ delta（回答增量）/ refs（条款引用）/ done（结束，携带 session_id）。"""
 
+    profile = ASSISTANTS.get(payload.assistant)
+    if profile is None:
+        raise HTTPException(status_code=400, detail="未知的助手类型")
+    if profile.roles and user.role not in profile.roles:
+        allowed = "、".join(ROLE_LABELS.get(r, r) for r in profile.roles)
+        raise HTTPException(status_code=403, detail=f"「{profile.title}」仅对{allowed}开放")
+
     msg = (payload.message or "").strip()
 
     def event_stream():
@@ -121,7 +139,12 @@ def chat(
             persisted = True
             try:
                 if session is None:
-                    session = ChatSession(user_id=user.id, project_id=project.id, title=msg[:TITLE_CHARS])
+                    session = ChatSession(
+                        user_id=user.id,
+                        project_id=project.id,
+                        assistant=profile.key,
+                        title=msg[:TITLE_CHARS],
+                    )
                     db.add(session)
                     db.flush()
                 db.add(ChatMessage(session_id=session.id, role="user", content=msg))
@@ -168,13 +191,15 @@ def chat(
 
         try:
             if payload.session_id:
-                # 归属校验失败时不报错，静默当作新会话处理（done 会返回新 id）
+                # 归属校验失败时不报错，静默当作新会话处理（done 会返回新 id）；
+                # 会话同时按助手隔离，安全助手的会话不会被项目管理助手复用
                 session = (
                     db.query(ChatSession)
                     .filter(
                         ChatSession.id == payload.session_id,
                         ChatSession.user_id == user.id,
                         ChatSession.project_id == project.id,
+                        ChatSession.assistant == profile.key,
                     )
                     .first()
                 )
@@ -186,11 +211,24 @@ def chat(
 
             if msg and llm_ready():
                 try:
-                    yield from stream(run_agent(db, user, project, msg, history))
+                    yield from stream(
+                        run_agent(
+                            db,
+                            user,
+                            project,
+                            msg,
+                            history,
+                            tools=profile.tools,
+                            system_prompt=profile.prompt_builder(user, project),
+                        )
+                    )
                     return
                 except Exception:
                     logger.exception("Agent 链路失败，降级规则引擎 user=%s msg=%s", user.name, msg[:50])
-            yield from stream(_rule_fallback(db, user, project, msg))
+            if profile.key == "pm":
+                yield from stream(_pm_fallback(msg))
+            else:
+                yield from stream(_rule_fallback(db, user, project, msg))
         finally:
             persist()  # 客户端中断 / 异常时兜底落库
             db.close()
@@ -205,13 +243,18 @@ def chat(
 @router.get("/sessions")
 def list_sessions(
     limit: int = 20,
+    assistant: str = "safety",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     project: Project = Depends(current_project),
 ):
     rows = (
         db.query(ChatSession)
-        .filter(ChatSession.user_id == user.id, ChatSession.project_id == project.id)
+        .filter(
+            ChatSession.user_id == user.id,
+            ChatSession.project_id == project.id,
+            ChatSession.assistant == assistant,
+        )
         .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
         .limit(min(max(limit, 1), LIST_LIMIT))
         .all()

@@ -324,6 +324,7 @@ class ChatSession(Base):
     字段说明:
         user_id: 归属用户，会话按账号隔离
         project_id: 归属项目，上下文中的工单/统计数据都是项目级
+        assistant: 所属智能助手（safety=AI 安全助手 / pm=项目管理助手），会话按助手隔离
         title: 会话标题（首条用户消息截前 20 字）
     """
 
@@ -332,6 +333,7 @@ class ChatSession(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    assistant: Mapped[str] = mapped_column(String(20), default="safety", index=True)
     title: Mapped[str] = mapped_column(String(60), default="新的对话")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

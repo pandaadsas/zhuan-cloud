@@ -22,6 +22,7 @@ from .chat_tools import (
     weekly_list,
 )
 from .llm import client
+from . import pm_tools
 
 logger = logging.getLogger("zhuan.agent")
 
@@ -248,6 +249,266 @@ TOOLS = [
 TOOL_MAP = {t.name: t for t in TOOLS}
 
 
+# ---------- 项目管理助手工具（仅项目经理可见） ----------
+
+
+def _exec_pm_list_projects(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.projects_markdown(db), []
+
+
+def _exec_pm_create_project(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.create_project(db, user, args)
+
+
+def _exec_pm_update_project(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.update_project(db, user, project, args)
+
+
+def _exec_pm_list_zones(db: Session, user: User, project: Project, args: dict):
+    pid = args.get("project_id")
+    if pid and int(pid) != project.id:
+        return pm_tools.zones_markdown(db, int(pid), f"项目 #{pid}"), []
+    return pm_tools.zones_markdown(db, project.id, project.name), []
+
+
+def _exec_pm_create_zone(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.create_zone(db, user, project, args)
+
+
+def _exec_pm_update_zone(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.update_zone(db, user, project, args)
+
+
+def _exec_pm_delete_zone(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.delete_zone(db, user, project, args)
+
+
+def _exec_pm_list_subs(db: Session, user: User, project: Project, args: dict):
+    pid = args.get("project_id")
+    if pid and int(pid) != project.id:
+        return pm_tools.subs_markdown(db, int(pid), f"项目 #{pid}"), []
+    return pm_tools.subs_markdown(db, project.id, project.name), []
+
+
+def _exec_pm_create_sub(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.create_subcontractor(db, user, project, args)
+
+
+def _exec_pm_update_sub(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.update_subcontractor(db, user, project, args)
+
+
+def _exec_pm_list_users(db: Session, user: User, project: Project, args: dict):
+    return pm_tools.responsible_users_markdown(db, project.id, project.name), []
+
+
+PM_ROLES = ("project_manager",)
+
+PM_TOOLS = [
+    Tool(
+        "list_projects",
+        "查询平台上全部项目的列表（含编号、地点、规模、阶段、区域与分包数量）。编辑项目或跨项目操作前先调用确认目标编号。",
+        {"type": "object", "properties": {}},
+        _exec_pm_list_projects,
+        "正在查询项目列表…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "create_project",
+        "新增项目。name 必填；信息不全时先向用户追问，不要凭空编造。",
+        {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "项目名称（必填）"},
+                "location": {"type": "string", "description": "项目地点"},
+                "total_area": {"type": "string", "description": "总建筑面积，如 12.6万㎡"},
+                "scale_desc": {"type": "string", "description": "规模描述"},
+                "current_stage": {"type": "string", "description": "当前阶段，如 基础施工、主体结构"},
+                "note": {"type": "string", "description": "备注"},
+            },
+            "required": ["name"],
+        },
+        _exec_pm_create_project,
+        "正在新增项目…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "update_project",
+        "编辑项目信息。project_id 不传时默认编辑当前项目；只传需要修改的字段，未传字段保持不变。",
+        {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer", "description": "目标项目编号，不传则编辑当前项目"},
+                "name": {"type": "string", "description": "项目名称"},
+                "location": {"type": "string", "description": "项目地点"},
+                "total_area": {"type": "string", "description": "总建筑面积"},
+                "scale_desc": {"type": "string", "description": "规模描述"},
+                "current_stage": {"type": "string", "description": "当前阶段"},
+                "note": {"type": "string", "description": "备注"},
+            },
+        },
+        _exec_pm_update_project,
+        "正在编辑项目信息…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "list_zones",
+        "查询项目的责任区域列表（含编号、类型、层数、阶段、分包、责任人）。编辑区域前先调用确认编号。",
+        {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer", "description": "目标项目编号，不传则查当前项目"},
+            },
+        },
+        _exec_pm_list_zones,
+        "正在查询责任区域…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "create_zone",
+        "在项目中新增责任区域。name 必填；分包和责任人可传编号或名称，信息不全时先向用户确认。",
+        {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "区域名称（必填），如 3号楼"},
+                "project_id": {"type": "integer", "description": "目标项目编号，不传则建在当前项目"},
+                "zone_type": {"type": "string", "description": "区域类型，如 住宅楼、地下室"},
+                "floor_count": {"type": "integer", "description": "层数"},
+                "current_stage": {"type": "string", "description": "当前阶段，如 主体结构"},
+                "subcontractor_id": {"type": "integer", "description": "所属分包编号（与 subcontractor_name 二选一）"},
+                "subcontractor_name": {"type": "string", "description": "所属分包名称（与 subcontractor_id 二选一）"},
+                "responsible_user_id": {"type": "integer", "description": "责任人用户编号（与 responsible_user_name 二选一）"},
+                "responsible_user_name": {"type": "string", "description": "责任人姓名（与 responsible_user_id 二选一）"},
+            },
+            "required": ["name"],
+        },
+        _exec_pm_create_zone,
+        "正在新增责任区域…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "update_zone",
+        "编辑责任区域信息（名称/类型/层数/阶段/分包/责任人）。zone_id 必填，只传需要修改的字段。",
+        {
+            "type": "object",
+            "properties": {
+                "zone_id": {"type": "integer", "description": "区域编号（必填），从 list_zones 结果获取"},
+                "name": {"type": "string", "description": "区域名称"},
+                "zone_type": {"type": "string", "description": "区域类型"},
+                "floor_count": {"type": "integer", "description": "层数"},
+                "current_stage": {"type": "string", "description": "当前阶段"},
+                "subcontractor_id": {"type": "integer", "description": "所属分包编号（与 subcontractor_name 二选一）"},
+                "subcontractor_name": {"type": "string", "description": "所属分包名称（与 subcontractor_id 二选一）"},
+                "responsible_user_id": {"type": "integer", "description": "责任人用户编号（与 responsible_user_name 二选一）"},
+                "responsible_user_name": {"type": "string", "description": "责任人姓名（与 responsible_user_id 二选一）"},
+            },
+            "required": ["zone_id"],
+        },
+        _exec_pm_update_zone,
+        "正在编辑责任区域…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "delete_zone",
+        "删除责任区域。仅在用户明确确认删除后调用；区域有关联工单时无法删除。调用前先说明将删除哪个区域。",
+        {
+            "type": "object",
+            "properties": {
+                "zone_id": {"type": "integer", "description": "区域编号（必填），从 list_zones 结果获取"},
+            },
+            "required": ["zone_id"],
+        },
+        _exec_pm_delete_zone,
+        "正在删除责任区域…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "list_subcontractors",
+        "查询项目的分包单位列表（含编号、承包范围、负责人及电话）。编辑分包前先调用确认编号。",
+        {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer", "description": "目标项目编号，不传则查当前项目"},
+            },
+        },
+        _exec_pm_list_subs,
+        "正在查询分包单位…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "create_subcontractor",
+        "在项目中新增分包单位。name 必填；信息不全时先向用户确认。",
+        {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "分包单位名称（必填）"},
+                "project_id": {"type": "integer", "description": "目标项目编号，不传则建在当前项目"},
+                "scope": {"type": "string", "description": "承包范围，如 主体结构、机电安装"},
+                "leader_name": {"type": "string", "description": "分包负责人姓名"},
+                "leader_phone": {"type": "string", "description": "分包负责人电话"},
+            },
+            "required": ["name"],
+        },
+        _exec_pm_create_sub,
+        "正在新增分包单位…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "update_subcontractor",
+        "编辑分包单位信息。subcontractor_id 必填，只传需要修改的字段。",
+        {
+            "type": "object",
+            "properties": {
+                "subcontractor_id": {"type": "integer", "description": "分包单位编号（必填），从 list_subcontractors 结果获取"},
+                "name": {"type": "string", "description": "分包单位名称"},
+                "scope": {"type": "string", "description": "承包范围"},
+                "leader_name": {"type": "string", "description": "分包负责人姓名"},
+                "leader_phone": {"type": "string", "description": "分包负责人电话"},
+            },
+            "required": ["subcontractor_id"],
+        },
+        _exec_pm_update_sub,
+        "正在编辑分包单位…",
+        roles=PM_ROLES,
+    ),
+    Tool(
+        "list_responsible_users",
+        "查询当前项目可指派的分包负责人名单（含编号、账号、所属分包）。为责任区域指定责任人时先调用确认人选。",
+        {"type": "object", "properties": {}},
+        _exec_pm_list_users,
+        "正在查询负责人名单…",
+        roles=PM_ROLES,
+    ),
+]
+
+
+class AssistantProfile:
+    """一个智能助手 = 工具集 + 系统提示词 + 可见角色；对话与会话按 key 隔离。"""
+
+    def __init__(self, key: str, title: str, roles: tuple | None, tools: list[Tool], prompt_builder):
+        self.key = key
+        self.title = title
+        self.roles = roles
+        self.tools = tools
+        self.prompt_builder = prompt_builder
+
+
+def _pm_system_prompt(user: User, project: Project) -> str:
+    return (
+        f"你是筑安云的项目管理助手，服务对象是项目经理（姓名：{user.name}），当前项目「{project.name}」，"
+        "回答使用 Markdown 中文。\n"
+        "你的职责是通过对话完成项目管理工作：新增/编辑项目、管理责任区域（含指派分包与责任人）、管理分包单位。\n"
+        "规则：\n"
+        "1. 查询类问题（项目列表、区域列表、分包列表、负责人名单）必须先调用工具获取真实数据，禁止编造编号和名称。\n"
+        "2. 新增/编辑前把用户口述整理成字段；必填项缺失（项目名称/区域名称/分包名称）时先追问，不要编造。\n"
+        "3. 编辑/删除前必须先调用对应 list 工具确认目标编号，并向用户复述将要执行的修改，得到确认后再调用写工具。\n"
+        "4. 删除责任区域属高危操作：调用 delete_zone 前必须获得用户对具体区域的明确确认；有关联工单时工具会拒绝删除，此时建议改用编辑。\n"
+        "5. 操作成功后用一两句话汇报结果（保留编号等关键信息），必要时提示可继续完善其他字段。\n"
+        "6. 工具返回 error 时，向用户说明原因并给出建议（如名称重复、编号不存在、缺少权限）。\n"
+        "7. 与项目管理无关的问题（隐患上报、工单进度、周报等），告知用户请前往「AI 安全助手」咨询。"
+    )
+
+
 def _system_prompt(user: User, project: Project) -> str:
     role = ROLE_LABELS.get(user.role, user.role)
     return (
@@ -266,6 +527,11 @@ def _system_prompt(user: User, project: Project) -> str:
         "查/生成周报、上报隐患、查区域与分包目录。"
     )
 
+
+ASSISTANTS = {
+    "safety": AssistantProfile("safety", "AI 安全助手", None, TOOLS, _system_prompt),
+    "pm": AssistantProfile("pm", "项目管理助手", PM_ROLES, PM_TOOLS, _pm_system_prompt),
+}
 
 def _history_messages(history: list[dict]) -> list[dict]:
     return [
@@ -290,7 +556,7 @@ def _chunk(text: str, size: int = 60) -> Iterator[str]:
         yield text[i : i + size]
 
 
-def _stream_llm_round(cfg, messages: list[dict]) -> tuple[list[str], dict[int, dict], str | None]:
+def _stream_llm_round(cfg, messages: list[dict], tool_schemas: list[dict]) -> tuple[list[str], dict[int, dict], str | None]:
     """跑一轮流式补全，返回 (增量文本片段列表, 工具调用槽, 错误信息)。
 
     网络中断等异常以错误字符串返回，由调用方决定降级或中止。
@@ -301,7 +567,7 @@ def _stream_llm_round(cfg, messages: list[dict]) -> tuple[list[str], dict[int, d
         stream = client(cfg).chat.completions.create(
             model=cfg.qwen_text_model,
             messages=messages,
-            tools=[t.schema for t in TOOLS],
+            tools=tool_schemas,
             stream=True,
             temperature=0.4,
         )
@@ -332,15 +598,20 @@ def run_agent(
     project: Project,
     message: str,
     history: list[dict],
+    tools: list[Tool] | None = None,
+    system_prompt: str | None = None,
 ) -> Iterator[dict]:
     """执行 agent 循环，逐个 yield SSE 事件 dict。
 
+    tools / system_prompt 决定助手画像（默认 = 安全助手）；
     LLM 首轮调用就失败时抛出异常，由路由层降级到规则链路；
     已经输出过增量后再失败，直接发 error 事件结束。
     """
     cfg = get_cfg()
+    tool_list = tools if tools is not None else TOOLS
+    tool_map = {t.name: t for t in tool_list}
     messages = [
-        {"role": "system", "content": _system_prompt(user, project)},
+        {"role": "system", "content": system_prompt or _system_prompt(user, project)},
         *_history_messages(history),
         {"role": "user", "content": message},
     ]
@@ -349,7 +620,7 @@ def run_agent(
     streamed_any = False
 
     for _round in range(MAX_ROUNDS):
-        content_parts, tool_slots, err = _stream_llm_round(cfg, messages)
+        content_parts, tool_slots, err = _stream_llm_round(cfg, messages, [t.schema for t in tool_list])
         if err:
             logger.warning("Agent LLM 调用失败：%s", err)
             if streamed_any:
@@ -381,9 +652,9 @@ def run_agent(
             except json.JSONDecodeError:
                 args = {}
             logger.info("Agent 工具调用 %s args=%s", name, args)
-            yield {"type": "tool", "name": name, "label": TOOL_MAP[name].label if name in TOOL_MAP else name, "args": args}
+            yield {"type": "tool", "name": name, "label": tool_map[name].label if name in tool_map else name, "args": args}
 
-            tool = TOOL_MAP.get(name)
+            tool = tool_map.get(name)
             if tool is None:
                 result, round_refs = {"error": f"未知工具 {name}"}, []
             elif tool.roles and user.role not in tool.roles:

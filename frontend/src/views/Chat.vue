@@ -1,8 +1,8 @@
 <template>
   <div class="page-shell">
     <div class="page-intro">
-      <div class="page-title">现场安全智询</div>
-      <div class="page-sub">查进度、筛工单、看统计、查规范、调周报，也可以直接对话上报隐患。</div>
+      <div class="page-title">{{ ASSISTANT.pageTitle }}</div>
+      <div class="page-sub">{{ ASSISTANT.pageSub }}</div>
     </div>
 
     <div class="chat-layout">
@@ -28,8 +28,8 @@
 
       <div class="card chat-card">
         <div class="assistant-head">
-          <div class="assistant-avatar"><el-icon><Service /></el-icon></div>
-          <div><strong>筑安云 AI 助手</strong><small><i></i>在线服务</small></div>
+          <div class="assistant-avatar"><el-icon><component :is="ASSISTANT.icon" /></el-icon></div>
+          <div><strong>{{ ASSISTANT.name }}</strong><small><i></i>在线服务</small></div>
         </div>
         <div class="chat-box" ref="boxEl">
           <div v-for="(m, i) in messages" :key="i" class="msg" :class="{ me: m.me }">
@@ -59,7 +59,7 @@
         </div>
 
         <div class="input-row">
-          <el-input v-model="input" aria-label="向 AI 安全助手提问" placeholder="输入问题，例如：3号楼12层的隐患整改到哪一步了？" size="large" @keydown.enter.exact.prevent="send()">
+          <el-input v-model="input" :aria-label="`向${ASSISTANT.name}提问`" :placeholder="ASSISTANT.placeholder" size="large" @keydown.enter.exact.prevent="send()">
             <template #append>
               <el-button type="primary" :disabled="!input.trim() || sending" aria-label="发送问题" @click="send()"><el-icon><Position /></el-icon><span>发送</span></el-button>
             </template>
@@ -74,34 +74,68 @@
 import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, Service, OfficeBuilding } from '@element-plus/icons-vue'
+import { useRoute } from 'vue-router'
 import http from '../api'
 import { projectStore, userStore, useUserStore } from '../store'
 
-const GREETING = [
-  '您好，我是筑安云 AI 安全助手。',
-  '',
-  '我可以帮你：',
-  '- 查询工单处置进度，按状态/风险筛选工单',
-  '- 汇总整改统计、超期与近8周趋势',
-  '- 检索现场安全规范条款',
-  '- 查看或生成项目安全周报',
-  '- 查询责任区域、分包单位与负责人',
-  '- 对话式上报隐患，AI 自动匹配责任人',
-].join('\n')
+// 页面按路由 meta 复用：safety=AI 安全助手（全员）/ pm=项目管理助手（仅项目经理）
+const PROFILES = {
+  safety: {
+    key: 'safety',
+    pageTitle: '现场安全智询',
+    pageSub: '查进度、筛工单、看统计、查规范、调周报，也可以直接对话上报隐患。',
+    name: '筑安云 AI 助手',
+    icon: Service,
+    placeholder: '输入问题，例如：3号楼12层的隐患整改到哪一步了？',
+    greeting: [
+      '您好，我是筑安云 AI 安全助手。',
+      '',
+      '我可以帮你：',
+      '- 查询工单处置进度，按状态/风险筛选工单',
+      '- 汇总整改统计、超期与近8周趋势',
+      '- 检索现场安全规范条款',
+      '- 查看或生成项目安全周报',
+      '- 查询责任区域、分包单位与负责人',
+      '- 对话式上报隐患，AI 自动匹配责任人',
+    ].join('\n'),
+    quick: ['3号楼12层的隐患进度', '本周整改情况统计', '临边防护有哪些规范要求', '有哪些分包单位', '生成安全周报'],
+  },
+  pm: {
+    key: 'pm',
+    pageTitle: '项目管理助手',
+    pageSub: '对话式新增/编辑项目、管理责任区域与分包单位，动口不动手。',
+    name: '筑安云 项目管理助手',
+    icon: OfficeBuilding,
+    placeholder: '输入指令，例如：新增一个项目，名称为滨江苑二期',
+    greeting: [
+      '您好，我是筑安云项目管理助手，仅项目经理可用。',
+      '',
+      '我可以帮你：',
+      '- 新增 / 编辑项目信息',
+      '- 新增 / 编辑 / 删除责任区域，指派分包与责任人',
+      '- 新增 / 编辑分包单位及负责人',
+      '- 随时查询项目、区域、分包与负责人目录',
+      '',
+      '执行修改和删除前，我会先和你确认内容，请放心下达指令。',
+    ].join('\n'),
+    quick: ['列出所有项目', '新增一个项目', '查看当前项目的责任区域', '新增一家分包单位', '修改项目信息'],
+  },
+}
+const ASSISTANT = PROFILES[useRoute().meta.assistant === 'pm' ? 'pm' : 'safety']
 
 const input = ref('')
 const sending = ref(false)
 const boxEl = ref()
 const sessions = ref([])
 const sessionId = ref(null)
-const messages = ref([{ me: false, text: GREETING, refs: [], weeklyId: null }])
+const messages = ref([{ me: false, text: ASSISTANT.greeting, refs: [], weeklyId: null }])
 
-const quick = ['3号楼12层的隐患进度', '本周整改情况统计', '临边防护有哪些规范要求', '有哪些分包单位', '生成安全周报']
+const quick = ASSISTANT.quick
 
-// 会话指针只存"上次打开的会话 id"，消息正文全部以服务端为准
+// 会话指针只存"上次打开的会话 id"，消息正文全部以服务端为准（按助手隔离）
 function pointerKey() {
-  return `zhuan_chat_session:${userStore.user?.id ?? 'anon'}:${projectStore.id || 'default'}`
+  return `zhuan_chat_session:${ASSISTANT.key}:${userStore.user?.id ?? 'anon'}:${projectStore.id || 'default'}`
 }
 
 function render(md) {
@@ -115,12 +149,12 @@ async function scrollBottom() {
 
 async function loadSessions() {
   try {
-    sessions.value = await http.get('/api/chat/sessions')
+    sessions.value = await http.get('/api/chat/sessions', { params: { assistant: ASSISTANT.key } })
   } catch { /* 列表加载失败不阻塞对话 */ }
 }
 
 function greeting() {
-  return [{ me: false, text: GREETING, refs: [], weeklyId: null }]
+  return [{ me: false, text: ASSISTANT.greeting, refs: [], weeklyId: null }]
 }
 
 async function openSession(id) {
@@ -192,7 +226,7 @@ async function send(preset) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(projectId ? { 'X-Project-Id': projectId } : {}),
       },
-      body: JSON.stringify({ message: text, session_id: sessionId.value }),
+      body: JSON.stringify({ message: text, session_id: sessionId.value, assistant: ASSISTANT.key }),
     })
     if (resp.status === 401) {
       useUserStore().logout()

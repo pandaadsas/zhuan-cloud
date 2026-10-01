@@ -20,6 +20,8 @@ _STATEMENTS = [
     "ALTER TABLE weekly_reports ADD COLUMN project_id INT NULL",
     # 知识库条款来源标记（builtin=内置规范 / import=文档导入；空=旧版种子，启动时清理）
     "ALTER TABLE regulations ADD COLUMN source VARCHAR(20) DEFAULT ''",
+    # 会话所属智能助手（存量行由 DEFAULT 回填为 safety）
+    "ALTER TABLE chat_sessions ADD COLUMN assistant VARCHAR(20) DEFAULT 'safety'",
 ]
 
 # 存量数据回填到唯一项目；WHERE 过滤保证重复执行无副作用
