@@ -105,7 +105,7 @@ def startup():
     db = SessionLocal()
     try:
         seeded = run_if_empty(db)
-        logger.info("种子数据=%s", "已初始化" if seeded else "已存在")
+        logger.info("演示数据=%s", "已初始化" if seeded else "已存在")
         sync_builtin_knowledge(db)  # 内置规范切片入库（幂等）：替代旧版种子条款
     finally:
         db.close()
