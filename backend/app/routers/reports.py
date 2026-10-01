@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from ..agents.graph import process_report
 from ..auth import get_current_user, require_roles
 from ..database import get_db
-from ..deps import get_current_project
-from ..models import Report, User, WorkOrder, Zone
+from ..deps import current_project
+from ..models import Project, Report, User, WorkOrder, Zone
 from ..schemas import ReportIn
 from ..serializers import order_to_dict
 
@@ -24,12 +24,16 @@ def gen_order_no(db: Session) -> str:
 
 
 @router.post("")
-def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User = Depends(require_roles("safety_officer", "safety_supervisor"))):
+def create_report(
+    payload: ReportIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("safety_officer", "safety_supervisor")),
+    project: Project = Depends(current_project),
+):
     text = (payload.text or "").strip()
     if len(text) < 5:
         raise HTTPException(status_code=400, detail="请描述隐患内容（至少5个字），如：3号楼12层临边防护缺失")
 
-    project = get_current_project(db)
     logger.info("收到隐患上报 user=%s type=%s len=%d", user.name, payload.input_type, len(text))
     result = process_report(db, text, payload.input_type, project_id=project.id)
     report = Report(
@@ -107,8 +111,13 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db), user: User =
 
 
 @router.get("")
-def list_reports(db: Session = Depends(get_db), user: User = Depends(get_current_user), limit: int = 50):
-    query = db.query(Report)
+def list_reports(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+    limit: int = 50,
+):
+    query = db.query(Report).filter(Report.project_id == project.id)
     if user.role == "safety_officer":
         query = query.filter(Report.reporter_id == user.id)
     reports = query.order_by(Report.created_at.desc()).limit(limit).all()

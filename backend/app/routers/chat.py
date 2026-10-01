@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from ..agents.llm import chat_text, llm_ready
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import User, WorkOrder
+from ..deps import current_project
+from ..models import Project, User, WorkOrder
 from ..rag.retriever import search as kb_search
 from ..schemas import ChatIn
 from ..serializers import STATUS_LABELS
@@ -32,8 +33,10 @@ def classify(msg: str) -> str:
     return "kb"
 
 
-def handle_progress(db: Session, msg: str) -> tuple[str, list]:
+def handle_progress(db: Session, msg: str, project_id: int | None = None) -> tuple[str, list]:
     query = db.query(WorkOrder)
+    if project_id is not None:
+        query = query.filter(WorkOrder.project_id == project_id)
     m = re.search(r"ZA-\d{8}-\d{3}", msg)
     order = None
     if m:
@@ -74,10 +77,13 @@ def handle_progress(db: Session, msg: str) -> tuple[str, list]:
     return "\n".join(lines), []
 
 
-def handle_stats(db: Session, msg: str) -> tuple[str, list]:
-    total = db.query(WorkOrder).count()
-    closed = db.query(WorkOrder).filter(WorkOrder.status == "closed").count()
-    open_orders = db.query(WorkOrder).filter(WorkOrder.status.in_(("pending_review", "dispatched", "rectifying", "recheck"))).all()
+def handle_stats(db: Session, msg: str, project_id: int | None = None) -> tuple[str, list]:
+    scope = db.query(WorkOrder)
+    if project_id is not None:
+        scope = scope.filter(WorkOrder.project_id == project_id)
+    total = scope.count()
+    closed = scope.filter(WorkOrder.status == "closed").count()
+    open_orders = scope.filter(WorkOrder.status.in_(("pending_review", "dispatched", "rectifying", "recheck"))).all()
     overdue = [o for o in open_orders if o.overdue]
     risk_open = dict(Counter(o.risk_level for o in open_orders))
     lines = [
@@ -118,12 +124,17 @@ def handle_kb(db: Session, msg: str) -> tuple[str, list]:
 
 
 @router.post("")
-def chat(payload: ChatIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def chat(
+    payload: ChatIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
     msg = (payload.message or "").strip()
     if not msg:
         return {"intent": "empty", "reply": "请输入您的问题，例如：3号楼12层的隐患整改到哪一步了？"}
     intent = classify(msg)
-    logger.info("AI对话 user=%s(%s) intent=%s msg=%s", user.name, user.role, intent, msg[:50])
+    logger.info("AI对话 user=%s(%s) intent=%s project=%s msg=%s", user.name, user.role, intent, project.name, msg[:50])
 
     if intent == "weekly":
         if user.role not in ("safety_officer", "safety_supervisor", "project_manager"):
@@ -132,7 +143,7 @@ def chat(payload: ChatIn, db: Session = Depends(get_db), user: User = Depends(ge
                 "reply": "周报生成权限为安全员/安全总监/项目经理。如需了解整改情况，可以直接问我进度或统计。",
             }
         start, end = week_range(0)
-        report = generate_weekly(db, start, end, user)
+        report = generate_weekly(db, start, end, user, project_id=project.id)
         return {
             "intent": "weekly",
             "reply": report.content_md,
@@ -140,10 +151,10 @@ def chat(payload: ChatIn, db: Session = Depends(get_db), user: User = Depends(ge
             "refs": [],
         }
     if intent == "progress":
-        reply, refs = handle_progress(db, msg)
+        reply, refs = handle_progress(db, msg, project_id=project.id)
         return {"intent": intent, "reply": reply, "refs": refs}
     if intent == "stats":
-        reply, refs = handle_stats(db, msg)
+        reply, refs = handle_stats(db, msg, project_id=project.id)
         return {"intent": intent, "reply": reply, "refs": refs}
     reply, refs = handle_kb(db, msg)
     return {"intent": intent, "reply": reply, "refs": refs}

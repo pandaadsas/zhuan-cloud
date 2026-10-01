@@ -6,6 +6,7 @@ from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..config import settings
 from ..database import db_mode, get_db
+from ..deps import current_project
 from ..models import Project, Subcontractor, User, Zone
 from ..serializers import STATUS_LABELS
 
@@ -13,8 +14,12 @@ router = APIRouter(prefix="/api/meta", tags=["meta"])
 
 
 @router.get("/options")
-def options(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    zones = db.query(Zone).all()
+def options(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    zones = db.query(Zone).filter(Zone.project_id == project.id).all()
     resp_users = db.query(User).filter(User.role == "responsible").all()
     return {
         "zones": [
@@ -48,16 +53,19 @@ def subcontractors(db: Session = Depends(get_db)):
 
 
 @router.get("/info")
-def info(db: Session = Depends(get_db)):
-    project = db.query(Project).order_by(Project.id).first()
+def info(
+    db: Session = Depends(get_db),
+    project: Project = Depends(current_project),
+):
     return {
         "app": "筑安云",
         "slogan": "把案头交给AI，把安全留给现场",
         "project": {
-            "name": project.name if project else "",
-            "location": project.location if project else "",
-            "scale_desc": project.scale_desc if project else "",
-            "current_stage": project.current_stage if project else "",
+            "id": project.id,
+            "name": project.name,
+            "location": project.location,
+            "scale_desc": project.scale_desc,
+            "current_stage": project.current_stage,
         },
         "db_mode": db_mode(),
         "mock_mode": settings.mock_mode,

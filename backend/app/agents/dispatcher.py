@@ -1,4 +1,5 @@
 """责任匹配：隐患位置 -> 责任分区；隐患类型 -> 分包承包范围 -> 责任人。"""
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..models import Subcontractor, User, Zone
@@ -48,7 +49,14 @@ def match_responsible(db: Session, extracted: dict, project_id: int | None = Non
         reason = "未自动匹配到责任人，请安全员在审核时手动指定"
 
     alternates = []
-    candidates = db.query(User).filter(User.role == "responsible").all()
+    candidate_query = db.query(User).filter(User.role == "responsible")
+    if project_id is not None:
+        # 候选责任人限定为该项目分包下的人员（未挂分包的全局责任人保留）
+        proj_sub_ids = db.query(Subcontractor.id).filter(Subcontractor.project_id == project_id)
+        candidate_query = candidate_query.filter(
+            or_(User.subcontractor_id.in_(proj_sub_ids), User.subcontractor_id.is_(None))
+        )
+    candidates = candidate_query.all()
     for u in candidates:
         if primary and u.id == primary.id:
             continue

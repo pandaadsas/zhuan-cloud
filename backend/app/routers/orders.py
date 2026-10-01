@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import OrderEvent, User, WorkOrder
+from ..deps import current_project
+from ..models import OrderEvent, Project, User, WorkOrder
 from ..schemas import ActionIn
 from ..serializers import event_to_dict, order_to_dict
 
@@ -51,9 +52,10 @@ def list_orders(
     mine: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
 ):
     sweep_overdue(db)
-    query = db.query(WorkOrder)
+    query = db.query(WorkOrder).filter(WorkOrder.project_id == project.id)
     if user.role == "responsible" or mine:
         query = query.filter(WorkOrder.responsible_user_id == user.id)
     if status:
@@ -73,8 +75,15 @@ def list_orders(
 
 
 @router.get("/{order_id}")
-def order_detail(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def order_detail(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
     o = _get_order_checked(db, order_id, user)
+    if o.project_id != project.id:
+        raise HTTPException(status_code=404, detail="工单不存在")
     events = (
         db.query(OrderEvent)
         .filter(OrderEvent.order_id == o.id)

@@ -82,11 +82,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from .routers import auth, chat, media, meta, orders, reports, stats, weekly  # noqa: E402
+from .routers import auth, chat, media, meta, orders, projects, reports, stats, weekly  # noqa: E402
 from .routers import settings as settings_router  # noqa: E402  # 避免与config.settings重名
 
 app.include_router(auth.router)
 app.include_router(meta.router)
+app.include_router(projects.router)
 app.include_router(reports.router)
 app.include_router(orders.router)
 app.include_router(chat.router)

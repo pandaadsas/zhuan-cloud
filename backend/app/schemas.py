@@ -24,3 +24,28 @@ class ChatIn(BaseModel):
 
 class WeeklyGenIn(BaseModel):
     offset: int = 0  # 0=本周，-1=上周
+
+
+class ProjectIn(BaseModel):
+    name: str
+    location: str = ""
+    total_area: str = ""
+    scale_desc: str = ""
+    current_stage: str = ""
+    note: str = ""
+
+
+class ZoneIn(BaseModel):
+    name: str
+    zone_type: str = ""
+    floor_count: int = 0
+    current_stage: str = ""
+    subcontractor_id: int | None = None
+    responsible_user_id: int | None = None
+
+
+class SubcontractorIn(BaseModel):
+    name: str
+    scope: str = ""
+    leader_name: str = ""
+    leader_phone: str = ""

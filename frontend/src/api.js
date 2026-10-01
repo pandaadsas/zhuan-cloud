@@ -7,6 +7,8 @@ const http = axios.create({ baseURL: '', timeout: 120000 })
 http.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('zhuan_token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
+  const projectId = localStorage.getItem('zhuan_project')
+  if (projectId) cfg.headers['X-Project-Id'] = projectId
   return cfg
 })
 

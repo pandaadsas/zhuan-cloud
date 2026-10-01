@@ -16,22 +16,33 @@
             <div class="header-context">{{ currentPage.context }}</div>
           </div>
         </div>
-        <el-dropdown trigger="click">
-          <button class="user-menu" aria-label="打开用户菜单">
-            <span class="avatar">{{ userInitial }}</span>
-            <span class="user-copy">
-              <strong>{{ user.name || user.username || '用户' }}</strong>
-              <small>{{ user.role_label }}</small>
-            </span>
-            <el-icon><ArrowDown /></el-icon>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item @click="$router.push('/settings')"><el-icon><Setting /></el-icon>系统设置</el-dropdown-item>
-              <el-dropdown-item divided @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <div class="header-tools">
+          <el-select
+            v-model="projectStore.id"
+            class="project-switch"
+            :loading="projectsLoading"
+            aria-label="切换项目"
+            @change="onProjectChange"
+          >
+            <el-option v-for="p in projectStore.list" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+          <el-dropdown trigger="click">
+            <button class="user-menu" aria-label="打开用户菜单">
+              <span class="avatar">{{ userInitial }}</span>
+              <span class="user-copy">
+                <strong>{{ user.name || user.username || '用户' }}</strong>
+                <small>{{ user.role_label }}</small>
+              </span>
+              <el-icon><ArrowDown /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="$router.push('/settings')"><el-icon><Setting /></el-icon>系统设置</el-dropdown-item>
+                <el-dropdown-item divided @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </el-header>
       <el-main class="main"><router-view /></el-main>
     </el-container>
@@ -41,8 +52,8 @@
 <script setup>
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { DataBoard, Camera, Tickets, Document, ChatDotRound, Setting } from '@element-plus/icons-vue'
-import { userStore, useUserStore } from '../store'
+import { DataBoard, Camera, Tickets, Document, ChatDotRound, Setting, OfficeBuilding } from '@element-plus/icons-vue'
+import { userStore, useUserStore, projectStore, setProjectList, setProject, currentProject } from '../store'
 import http from '../api'
 import BrandMark from '../components/BrandMark.vue'
 
@@ -63,6 +74,22 @@ const currentPage = computed(() => pages[route.path] || { title: '筑安云', co
 const userInitial = computed(() => (user.value.name || user.value.username || '筑').slice(0, 1))
 const canReport = computed(() => ['safety_officer', 'safety_supervisor'].includes(user.value.role))
 const canWeekly = computed(() => ['safety_officer', 'safety_supervisor', 'project_manager'].includes(user.value.role))
+const projectsLoading = ref(false)
+
+async function loadProjects() {
+  projectsLoading.value = true
+  try {
+    const data = await http.get('/api/projects')
+    setProjectList(data.projects || [])
+  } catch {}
+  finally { projectsLoading.value = false }
+}
+
+function onProjectChange(id) {
+  setProject(id)
+  // 各视图均在挂载时拉取数据，切换项目后整体刷新一次
+  location.reload()
+}
 
 const NavPanel = defineComponent({
   emits: ['navigate'],
@@ -73,11 +100,12 @@ const NavPanel = defineComponent({
       { path: '/orders', label: '整改工单', icon: Tickets, show: true },
       { path: '/weekly', label: '安全周报', icon: Document, show: canWeekly.value },
       { path: '/chat', label: 'AI 安全助手', icon: ChatDotRound, show: true },
+      { path: '/projects', label: '项目管理', icon: OfficeBuilding, show: true },
       { path: '/settings', label: '系统设置', icon: Setting, show: true },
     ].filter((item) => item.show))
     return () => h('div', { class: 'nav-panel' }, [
       h(RouterLink, { to: '/dashboard', class: 'brand', onClick: () => emit('navigate') }, {
-        default: () => [h(BrandMark, { compact: true }), h('div', [h('div', { class: 'brand-name' }, '筑安云'), h('div', { class: 'brand-sub' }, meta.value.project?.name || '智安协同平台')])],
+        default: () => [h(BrandMark, { compact: true }), h('div', [h('div', { class: 'brand-name' }, '筑安云'), h('div', { class: 'brand-sub' }, currentProject.value?.name || meta.value.project?.name || '智安协同平台')])],
       }),
       h('nav', { class: 'menu', 'aria-label': '主导航' }, items.value.map((item) => h(RouterLink, { to: item.path, class: 'menu-item', onClick: () => emit('navigate') }, {
         default: () => [h('span', { class: 'menu-icon' }, [h(item.icon)]), h('span', item.label)],
@@ -91,6 +119,7 @@ const NavPanel = defineComponent({
 })
 
 onMounted(async () => {
+  loadProjects()
   try { meta.value = await http.get('/api/meta/info') } catch {}
 })
 function logout() { useUserStore().logout(); router.push('/login') }
@@ -118,6 +147,9 @@ function logout() { useUserStore().logout(); router.push('/login') }
 .header-title { color: var(--zhuan-text); font-size: 17px; font-weight: 750; }
 .header-context { margin-top: 2px; color: var(--zhuan-muted); font-size: 11px; }
 .menu-trigger { display: none; }
+.header-tools { display: flex; align-items: center; gap: 14px; }
+.project-switch { width: 210px; }
+.project-switch :deep(.el-select__wrapper) { border-radius: 10px; background: #f6f8fc; box-shadow: 0 0 0 1px var(--zhuan-line) inset; }
 .user-menu { display: flex; align-items: center; gap: 9px; padding: 5px 7px 5px 5px; border: 0; border-radius: 11px; color: var(--zhuan-text); background: transparent; cursor: pointer; transition: background .18s ease; }
 .user-menu:hover { background: #f1f4f9; }
 .avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff; background: linear-gradient(145deg, var(--zhuan-blue), #4d7be2); font-size: 14px; font-weight: 750; }
@@ -134,6 +166,7 @@ function logout() { useUserStore().logout(); router.push('/login') }
 @media (max-width: 600px) {
   .header { height: 62px; padding: 0 12px; }
   .header-context, .user-copy { display: none; }
+  .project-switch { width: 132px; }
   .main { padding: 14px 12px 24px; }
 }
 </style>
