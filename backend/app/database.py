@@ -22,7 +22,7 @@ def _attach_engine_logging(eng) -> None:
         logger.info("新建数据库连接 [%s]", eng.pool.status())
 
     @event.listens_for(eng, "invalidate")
-    def _on_invalidate(dbapi_conn, exc):
+    def _on_invalidate(dbapi_conn, connection_record, exc):
         logger.warning("数据库连接失效即将重建：%s", exc)
 
 
