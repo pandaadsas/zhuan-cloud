@@ -349,6 +349,7 @@ class ChatMessage(Base):
         content: 消息正文（原始 Markdown）
         refs: 回答依据的规范条款列表（assistant）
         tool_trace: Agent 工具调用轨迹 [{name, args, at}]（assistant）
+        artifacts: 前端可恢复的结构化业务卡片列表（assistant）
         weekly_id: 关联的安全周报 id
     """
 
@@ -361,5 +362,25 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     refs: Mapped[list | None] = mapped_column(JSON, nullable=True)
     tool_trace: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    artifacts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     weekly_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ChatPendingAction(Base):
+    """项目管理助手产生的待确认写操作；令牌只能由原用户在原项目中使用一次。"""
+
+    __tablename__ = "chat_pending_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("chat_messages.id"), nullable=True, index=True)
+    operation: Mapped[str] = mapped_column(String(40))
+    args: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

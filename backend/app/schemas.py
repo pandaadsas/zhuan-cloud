@@ -24,6 +24,10 @@ class ChatIn(BaseModel):
     assistant: str = "safety"  # 智能助手：safety=AI 安全助手 / pm=项目管理助手（仅项目经理）
 
 
+class ChatActionIn(BaseModel):
+    confirm: bool
+
+
 class WeeklyGenIn(BaseModel):
     offset: int = 0  # 0=本周，-1=上周
 

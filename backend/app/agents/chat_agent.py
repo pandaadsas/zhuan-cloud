@@ -6,12 +6,15 @@ mock 模式不进入本模块，由路由层降级走规则链路（零 API 消�
 """
 import json
 import logging
+import secrets
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from ..config_runtime import get_cfg
-from ..models import Project, User
+from ..models import ChatPendingAction, OrderEvent, Project, User, WorkOrder
+from ..serializers import order_to_dict
 from .chat_tools import (
     find_order_markdown,
     orders_list_markdown,
@@ -481,6 +484,156 @@ PM_TOOLS = [
     ),
 ]
 
+PM_MUTATION_TOOLS = {
+    "create_project",
+    "update_project",
+    "create_zone",
+    "update_zone",
+    "delete_zone",
+    "create_subcontractor",
+    "update_subcontractor",
+}
+
+_FIELD_LABELS = {
+    "project_id": "项目编号",
+    "zone_id": "区域编号",
+    "subcontractor_id": "分包编号",
+    "name": "名称",
+    "location": "地点",
+    "total_area": "建筑面积",
+    "scale_desc": "规模描述",
+    "current_stage": "当前阶段",
+    "note": "备注",
+    "zone_type": "区域类型",
+    "floor_count": "层数",
+    "subcontractor_name": "分包单位",
+    "responsible_user_id": "责任人编号",
+    "responsible_user_name": "责任人",
+    "scope": "承包范围",
+    "leader_name": "负责人",
+    "leader_phone": "联系电话",
+}
+
+_ACTION_TITLES = {
+    "create_project": "新增项目",
+    "update_project": "修改项目信息",
+    "create_zone": "新增责任区域",
+    "update_zone": "修改责任区域",
+    "delete_zone": "删除责任区域",
+    "create_subcontractor": "新增分包单位",
+    "update_subcontractor": "修改分包单位",
+}
+
+
+def _pending_action(db: Session, user: User, project: Project, operation: str, args: dict) -> dict:
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now() + timedelta(minutes=10)
+    db.add(
+        ChatPendingAction(
+            token=token,
+            user_id=user.id,
+            project_id=project.id,
+            operation=operation,
+            args=args,
+            expires_at=expires_at,
+        )
+    )
+    return {
+        "type": "change_preview",
+        "title": _ACTION_TITLES.get(operation, "确认业务变更"),
+        "data": {
+            "token": token,
+            "operation": operation,
+            "fields": [
+                {"label": _FIELD_LABELS.get(key, key), "value": value}
+                for key, value in args.items()
+                if value is not None and value != ""
+            ],
+            "destructive": operation.startswith("delete_"),
+            "status": "pending",
+            "expires_at": expires_at.isoformat(timespec="seconds"),
+        },
+    }
+
+
+def _matching_orders(db: Session, user: User, project: Project, args: dict, single: bool = False) -> list[WorkOrder]:
+    query = db.query(WorkOrder).filter(WorkOrder.project_id == project.id)
+    order_no = str(args.get("order_no") or "").strip()
+    building = str(args.get("building") or "").strip()
+    floor = str(args.get("floor") or "").strip()
+    if order_no:
+        query = query.filter(WorkOrder.order_no == order_no)
+    if building:
+        query = query.filter(WorkOrder.building.like(f"%{building}%"))
+    if floor:
+        query = query.filter(WorkOrder.floor.like(f"%{floor}%"))
+    if args.get("status"):
+        query = query.filter(WorkOrder.status == args["status"])
+    if args.get("risk"):
+        query = query.filter(WorkOrder.risk_level == args["risk"])
+    if args.get("keyword"):
+        from sqlalchemy import or_
+
+        like = f"%{args['keyword']}%"
+        query = query.filter(or_(WorkOrder.title.like(like), WorkOrder.description.like(like)))
+    if user.role == "responsible" or args.get("mine"):
+        query = query.filter(WorkOrder.responsible_user_id == user.id)
+    return query.order_by(WorkOrder.created_at.desc()).limit(1 if single else 8).all()
+
+
+def _artifact_for_tool(
+    db: Session,
+    user: User,
+    project: Project,
+    name: str,
+    args: dict,
+    result,
+    refs: list[dict],
+    weekly_id: int | None = None,
+) -> dict | None:
+    """把工具结果补充为稳定的前端协议；正文仍由原 SSE delta 提供。"""
+    if name in ("query_order_progress", "list_orders"):
+        rows = _matching_orders(db, user, project, args, single=name == "query_order_progress")
+        orders = []
+        for row in rows:
+            item = order_to_dict(row, brief=True)
+            item["location"] = " · ".join(filter(None, (row.building, row.floor, row.spot)))
+            if name == "query_order_progress":
+                events = (
+                    db.query(OrderEvent)
+                    .filter(OrderEvent.order_id == row.id)
+                    .order_by(OrderEvent.created_at.desc())
+                    .limit(4)
+                    .all()
+                )
+                item["events"] = [
+                    {"actor": e.actor, "action": e.action, "detail": e.detail, "created_at": e.created_at.strftime("%m-%d %H:%M")}
+                    for e in reversed(events)
+                ]
+            orders.append(item)
+        return {"type": "work_order_list", "title": "工单进度" if len(orders) == 1 else "工单结果", "data": {"orders": orders}}
+    if name == "query_stats" and isinstance(result, dict):
+        return {"type": "stats_summary", "title": "治理统计", "data": result}
+    if name == "search_regulations":
+        return {"type": "clause_refs", "title": "规范依据", "data": {"refs": refs}}
+    if name in ("generate_weekly_report", "get_weekly_report", "list_weekly_reports"):
+        return {"type": "weekly_report", "title": "安全周报", "data": {"weekly_id": weekly_id}}
+    if name == "submit_hazard_report" and isinstance(result, dict) and result.get("submitted"):
+        return {"type": "hazard_submitted", "title": "隐患已上报", "data": result}
+    if name.startswith("list_") or name == "query_site_directory":
+        return {"type": "directory_result", "title": tool_map_title(name), "data": {"tool": name}}
+    return None
+
+
+def tool_map_title(name: str) -> str:
+    return {
+        "list_projects": "项目列表",
+        "list_zones": "责任区域",
+        "list_subcontractors": "分包单位",
+        "list_responsible_users": "负责人名单",
+        "query_site_directory": "项目目录",
+    }.get(name, "查询结果")
+
 
 class AssistantProfile:
     """一个智能助手 = 工具集 + 系统提示词 + 可见角色；对话与会话按 key 隔离。"""
@@ -501,9 +654,10 @@ def _pm_system_prompt(user: User, project: Project) -> str:
         "规则：\n"
         "1. 查询类问题（项目列表、区域列表、分包列表、负责人名单）必须先调用工具获取真实数据，禁止编造编号和名称。\n"
         "2. 新增/编辑前把用户口述整理成字段；必填项缺失（项目名称/区域名称/分包名称）时先追问，不要编造。\n"
-        "3. 编辑/删除前必须先调用对应 list 工具确认目标编号，并向用户复述将要执行的修改，得到确认后再调用写工具。\n"
-        "4. 删除责任区域属高危操作：调用 delete_zone 前必须获得用户对具体区域的明确确认；有关联工单时工具会拒绝删除，此时建议改用编辑。\n"
-        "5. 操作成功后用一两句话汇报结果（保留编号等关键信息），必要时提示可继续完善其他字段。\n"
+        "3. 编辑/删除前必须先调用对应 list 工具确认目标编号。写工具只会生成待确认卡片，不会立即修改数据；"
+        "告诉用户在卡片中核对并点击确认，禁止把自然语言中的‘确认’当作已执行。\n"
+        "4. 删除责任区域属高危操作：调用 delete_zone 前先说明具体区域；有关联工单时执行阶段会拒绝删除。\n"
+        "5. 写工具返回 pending_confirmation 时，只说明操作正在等待确认，不得声称已经成功。\n"
         "6. 工具返回 error 时，向用户说明原因并给出建议（如名称重复、编号不存在、缺少权限）。\n"
         "7. 与项目管理无关的问题（隐患上报、工单进度、周报等），告知用户请前往「AI 安全助手」咨询。"
     )
@@ -662,11 +816,22 @@ def run_agent(
                 result = {"error": f"当前角色（{ROLE_LABELS.get(user.role, user.role)}）无权执行该操作，"
                                     f"该操作权限为：{allowed}。请向用户说明，并建议其他可用的帮助。"}
                 round_refs = []
+            elif name in PM_MUTATION_TOOLS:
+                artifact = _pending_action(db, user, project, name, args)
+                yield {"type": "artifact", "artifact": artifact}
+                result = {
+                    "pending_confirmation": True,
+                    "message": "操作尚未执行，已向用户展示确认卡。请让用户核对后点击卡片按钮。",
+                }
+                round_refs = []
             else:
                 out = tool.executor(db, user, project, args)
                 if isinstance(out, Terminal):
                     weekly_id = out.weekly_id
                     refs += out.refs
+                    artifact = _artifact_for_tool(db, user, project, name, args, out.text, refs, weekly_id)
+                    if artifact:
+                        yield {"type": "artifact", "artifact": artifact}
                     yield {"type": "refs", "refs": _dedupe_refs(refs)}
                     for piece in _chunk(out.text):
                         streamed_any = True
@@ -676,6 +841,10 @@ def run_agent(
                 result, round_refs = out
 
             refs += round_refs
+            if name not in PM_MUTATION_TOOLS:
+                artifact = _artifact_for_tool(db, user, project, name, args, result, round_refs, weekly_id)
+                if artifact:
+                    yield {"type": "artifact", "artifact": artifact}
             messages.append(
                 {
                     "role": "tool",

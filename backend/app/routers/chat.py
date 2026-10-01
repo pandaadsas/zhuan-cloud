@@ -5,21 +5,23 @@
 """
 import json
 import logging
+import re
+from copy import deepcopy
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..agents.chat_agent import ASSISTANTS, run_agent
-from ..agents.chat_tools import classify, kb_answer, progress_from_msg, stats_markdown
+from ..agents.chat_agent import ASSISTANTS, PM_MUTATION_TOOLS, PM_TOOLS, run_agent
+from ..agents.chat_tools import classify, kb_answer, progress_from_msg, stats_markdown, stats_overview
 from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..database import SessionLocal, get_db
 from ..deps import current_project
-from ..models import ChatMessage, ChatSession, Project, User
-from ..schemas import ChatIn
-from ..serializers import ROLE_LABELS
+from ..models import ChatMessage, ChatPendingAction, ChatSession, Project, User, WorkOrder
+from ..schemas import ChatActionIn, ChatIn
+from ..serializers import ROLE_LABELS, order_to_dict
 from ..services.weekly import generate_weekly, week_range
 
 logger = logging.getLogger("zhuan.chat")
@@ -29,6 +31,9 @@ HISTORY_TURNS = 10  # 注入 agent 的最大历史条数
 HISTORY_TURN_CHARS = 500  # 单条历史截断长度，防止上下文膨胀
 LIST_LIMIT = 50  # 会话列表 / 消息恢复的条数上限
 TITLE_CHARS = 20  # 会话标题截取长度
+_ORDER_NO_RE = re.compile(r"ZA-\d{8}-\d{3}")
+_BUILDING_RE = re.compile(r"(\d{1,2})\s*[#号楼栋]")
+_FLOOR_RE = re.compile(r"(B\d{1,2}|负?\d{1,2})\s*层")
 
 
 def _sse(event: dict) -> bytes:
@@ -56,12 +61,29 @@ def _rule_fallback(db, user: User, project: Project, msg: str):
             report = generate_weekly(db, start, end, user, project_id=project.id)
             reply = report.content_md
             weekly_id = report.id
+            yield {"type": "artifact", "artifact": {"type": "weekly_report", "title": "安全周报", "data": {"weekly_id": weekly_id}}}
     elif intent == "progress":
         reply = progress_from_msg(db, msg, project_id=project.id)
+        query = db.query(WorkOrder).filter(WorkOrder.project_id == project.id)
+        if match := _ORDER_NO_RE.search(msg):
+            query = query.filter(WorkOrder.order_no == match.group(0))
+        if match := _BUILDING_RE.search(msg):
+            query = query.filter(WorkOrder.building.like(f"%{match.group(1)}%"))
+        if match := _FLOOR_RE.search(msg):
+            query = query.filter(WorkOrder.floor.like(f"%{match.group(0).replace(' ', '')}%"))
+        order = query.order_by(WorkOrder.created_at.desc()).first()
+        orders = []
+        if order:
+            item = order_to_dict(order, brief=True)
+            item["location"] = " · ".join(filter(None, (order.building, order.floor, order.spot)))
+            orders.append(item)
+        yield {"type": "artifact", "artifact": {"type": "work_order_list", "title": "工单进度", "data": {"orders": orders}}}
     elif intent == "stats":
         reply = stats_markdown(db, project_id=project.id)
+        yield {"type": "artifact", "artifact": {"type": "stats_summary", "title": "治理统计", "data": stats_overview(db, project)}}
     else:
         reply, refs = kb_answer(db, msg)
+        yield {"type": "artifact", "artifact": {"type": "clause_refs", "title": "规范依据", "data": {"refs": refs}}}
 
     yield {"type": "delta", "text": reply}
     yield {"type": "refs", "refs": refs}
@@ -128,7 +150,7 @@ def chat(
         # 流式响应期间依赖注入的 db 会话已不可靠，这里自建会话；user/project 属性已在鉴权时加载
         db = SessionLocal()
         session: ChatSession | None = None
-        acc = {"content": "", "refs": None, "tool_trace": [], "weekly_id": None}
+        acc = {"content": "", "refs": None, "tool_trace": [], "artifacts": [], "weekly_id": None}
         persisted = False
 
         def persist() -> int | None:
@@ -148,17 +170,27 @@ def chat(
                     db.add(session)
                     db.flush()
                 db.add(ChatMessage(session_id=session.id, role="user", content=msg))
-                if acc["content"] or acc["tool_trace"]:
-                    db.add(
-                        ChatMessage(
-                            session_id=session.id,
-                            role="assistant",
-                            content=acc["content"],
-                            refs=acc["refs"],
-                            tool_trace=acc["tool_trace"] or None,
-                            weekly_id=acc["weekly_id"],
-                        )
+                if acc["content"] or acc["tool_trace"] or acc["artifacts"]:
+                    assistant_message = ChatMessage(
+                        session_id=session.id,
+                        role="assistant",
+                        content=acc["content"],
+                        refs=acc["refs"],
+                        tool_trace=acc["tool_trace"] or None,
+                        artifacts=acc["artifacts"] or None,
+                        weekly_id=acc["weekly_id"],
                     )
+                    db.add(assistant_message)
+                    db.flush()
+                    tokens = [
+                        a.get("data", {}).get("token")
+                        for a in acc["artifacts"]
+                        if a.get("type") == "change_preview"
+                    ]
+                    if tokens:
+                        db.query(ChatPendingAction).filter(ChatPendingAction.token.in_(tokens)).update(
+                            {ChatPendingAction.message_id: assistant_message.id}, synchronize_session=False
+                        )
                 session.updated_at = datetime.now()
                 db.commit()
             except Exception:
@@ -177,6 +209,8 @@ def chat(
                 )
             elif t == "refs":
                 acc["refs"] = ev.get("refs") or None
+            elif t == "artifact" and ev.get("artifact"):
+                acc["artifacts"].append(ev["artifact"])
             elif t == "done":
                 acc["weekly_id"] = ev.get("weekly_id")
             return ev
@@ -292,6 +326,7 @@ def session_messages(
             "content": m.content,
             "refs": m.refs or [],
             "tool_trace": m.tool_trace or [],
+            "artifacts": m.artifacts or [],
             "weekly_id": m.weekly_id,
             "created_at": m.created_at.strftime("%m-%d %H:%M") if m.created_at else "",
         }
@@ -311,6 +346,87 @@ def delete_session(
     db.delete(s)
     db.commit()
     return {"ok": True}
+
+
+def _store_action_result(db: Session, action: ChatPendingAction, status: str, result) -> dict:
+    action.status = status
+    action.result = result if isinstance(result, dict) else {"message": str(result)}
+    action.resolved_at = datetime.now()
+    artifact = None
+    if action.message_id:
+        message = db.get(ChatMessage, action.message_id)
+        if message:
+            artifacts = deepcopy(message.artifacts or [])
+            for item in artifacts:
+                data = item.get("data") or {}
+                if data.get("token") == action.token:
+                    data = dict(data, status=status, result=action.result)
+                    item["data"] = data
+                    artifact = item
+                    break
+            message.artifacts = artifacts
+    return artifact or {
+        "type": "change_preview",
+        "title": "业务变更",
+        "data": {"token": action.token, "operation": action.operation, "status": status, "result": action.result},
+    }
+
+
+@router.post("/actions/{token}")
+def resolve_action(
+    token: str,
+    payload: ChatActionIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    """确认或取消项目管理助手的单次写操作。自然语言消息无法绕过此入口。"""
+    action = (
+        db.query(ChatPendingAction)
+        .filter(
+            ChatPendingAction.token == token,
+            ChatPendingAction.user_id == user.id,
+            ChatPendingAction.project_id == project.id,
+        )
+        .first()
+    )
+    if action is None:
+        raise HTTPException(status_code=404, detail="确认操作不存在或不属于当前账号")
+    if action.status != "pending":
+        raise HTTPException(status_code=409, detail="该操作已经处理，不能重复提交")
+    if action.expires_at < datetime.now():
+        artifact = _store_action_result(db, action, "expired", {"message": "确认已过期，请重新发起操作"})
+        db.commit()
+        raise HTTPException(status_code=410, detail=artifact["data"]["result"]["message"])
+
+    claimed = (
+        db.query(ChatPendingAction)
+        .filter(ChatPendingAction.id == action.id, ChatPendingAction.status == "pending")
+        .update({ChatPendingAction.status: "resolving"}, synchronize_session=False)
+    )
+    if claimed != 1:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="该操作正在处理或已经完成")
+    db.commit()
+    db.refresh(action)
+
+    if not payload.confirm:
+        artifact = _store_action_result(db, action, "cancelled", {"message": "已取消，本次未修改任何数据"})
+        db.commit()
+        return {"ok": True, "artifact": artifact}
+
+    tool = next((item for item in PM_TOOLS if item.name == action.operation), None)
+    if tool is None or action.operation not in PM_MUTATION_TOOLS:
+        raise HTTPException(status_code=400, detail="不支持的确认操作")
+    if tool.roles and user.role not in tool.roles:
+        raise HTTPException(status_code=403, detail="当前角色无权执行该操作")
+
+    output = tool.executor(db, user, project, dict(action.args or {}))
+    result = output[0] if isinstance(output, tuple) else output
+    status = "failed" if isinstance(result, dict) and result.get("error") else "completed"
+    artifact = _store_action_result(db, action, status, result)
+    db.commit()
+    return {"ok": status == "completed", "artifact": artifact}
 
 
 @router.get("/sessions/{session_id}/export")

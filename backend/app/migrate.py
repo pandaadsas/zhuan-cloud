@@ -22,6 +22,8 @@ _STATEMENTS = [
     "ALTER TABLE regulations ADD COLUMN source VARCHAR(20) DEFAULT ''",
     # 会话所属智能助手（存量行由 DEFAULT 回填为 safety）
     "ALTER TABLE chat_sessions ADD COLUMN assistant VARCHAR(20) DEFAULT 'safety'",
+    # AI 消息的结构化业务卡片（旧消息为空，继续按 Markdown 展示）
+    "ALTER TABLE chat_messages ADD COLUMN artifacts JSON",
 ]
 
 # 存量数据回填到唯一项目；WHERE 过滤保证重复执行无副作用
