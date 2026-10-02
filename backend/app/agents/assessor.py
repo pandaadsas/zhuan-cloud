@@ -1,6 +1,11 @@
 """风险定级 + 处置建议生成：检索到的规范条款作为定级与建议依据。"""
+import logging
+
 from .llm import chat_text
 from .extractor import RISK_ORDER
+
+logger = logging.getLogger("zhuan.assessor")
+REGULATION_CONTEXT_BUDGET = 8000
 
 # 特定类型的风险底线（叠加基础定级，只升不降）
 RISK_FLOOR = {
@@ -41,7 +46,22 @@ IMMEDIATE_ACTIONS = {
 
 ASSESS_SYSTEM_PROMPT = """你是建筑工地安全管理专家。根据隐患信息和检索到的规范条款，给出处置建议。
 要求：1)以"依据《规范名》条款要求：…"引用检索到的条款；2)按 立即措施/整改要求/预防措施 三段输出；
-3)150字以内，务实可执行。直接输出建议正文。"""
+3)150字以内，务实可执行。直接输出建议正文。
+4)规范中的数字、适用条件和禁止事项须有给定条款支持，不得编造；上下文不足时明确说明依据不足。"""
+
+
+def build_regulation_context(regs: list[dict]) -> str:
+    lines = []
+    used = 0
+    for r in regs[:3]:
+        line = f"《{r['doc_name']}》{r['clause_no']} {r['title']}：{r['content']}"
+        cost = len(line) + (1 if lines else 0)
+        if used + cost > REGULATION_CONTEXT_BUDGET:
+            logger.warning("条款上下文预算不足，跳过完整条款 %s %s", r['doc_name'], r['clause_no'])
+            continue
+        lines.append(line)
+        used += cost
+    return "\n".join(lines)
 
 
 def finalize_risk(extracted: dict) -> str:
@@ -62,14 +82,11 @@ def deadline_days(level: str) -> int:
 
 def build_suggestion(extracted: dict, regs: list[dict]) -> str:
     """真实模式：LLM基于规范条款生成；模拟模式：模板引擎组装（同样引用条款）。"""
-    reg_lines = [
-        f"《{r['doc_name']}》{r['clause_no']} {r['title']}：{r['content'][:80]}"
-        for r in regs[:3]
-    ]
+    context = build_regulation_context(regs)
     llm_suggestion = chat_text(
         ASSESS_SYSTEM_PROMPT,
         f"隐患：{extracted.get('description', '')}\n类型：{extracted.get('hazard_type', '')}\n"
-        f"初判等级：{extracted.get('risk_level', '')}\n检索到的规范条款：\n" + "\n".join(reg_lines),
+        f"初判等级：{extracted.get('risk_level', '')}\n检索到的规范条款：\n" + context,
     )
     if llm_suggestion:
         return llm_suggestion

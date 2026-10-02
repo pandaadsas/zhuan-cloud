@@ -197,14 +197,40 @@ def _search_keyword(query: str, k: int) -> list[dict]:
     return results
 
 
-def search(db: Session, query: str, k: int = 4) -> list[dict]:
+def _clause_numbers(query: str) -> list[str]:
+    # 三段编号，不把年份、四段版本号或小数的局部当作条款号。
+    numbers = re.findall(r"(?<![A-Za-z\d.])(?:第)?(\d+\.\d+\.\d+)(?:条)?(?![\d.])", query)
+    return list(dict.fromkeys(f"第{number}条" for number in numbers))
+
+
+def search_with_mode(db: Session, query: str, k: int = 4) -> tuple[list[dict], str]:
+    """内部评测接口；模式逐次返回，避免用启动模式推断实际检索路径。"""
+    if not query.strip() or k <= 0:
+        return [], "empty"
     if not _cache:
         refresh_cache(db)
     if not _cache:
-        return []
+        return [], "empty"
+    numbers = _clause_numbers(query)
+    if numbers:
+        results = []
+        for number in numbers:
+            for item in sorted(_cache, key=lambda entry: entry["id"]):
+                if item["clause_no"] == number:
+                    results.append({
+                        key: item[key]
+                        for key in ("doc_name", "clause_no", "title", "content", "tags")
+                    } | {"score": 1.0})
+        return results[:k], "exact"
     try:
         results = _search_vector(query, k)
     except Exception as e:
         logger.warning("Chroma 检索失败，降级关键词检索：%s", e)
         results = []
-    return results or _search_keyword(query, k)
+    if results:
+        return results, "vector"
+    return _search_keyword(query, k), "keyword"
+
+
+def search(db: Session, query: str, k: int = 4) -> list[dict]:
+    return search_with_mode(db, query, k)[0]
