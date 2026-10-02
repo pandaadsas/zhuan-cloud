@@ -10,6 +10,7 @@ __pycache__/
 backend/local_fallback.db
 backend/knowledge/embeddings_cache.json
 backend/knowledge/chroma_data/
+backend/.rag-eval-*/
 
 # ===== Node / 构建产物 =====
 node_modules/

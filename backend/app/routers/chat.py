@@ -14,7 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..agents.chat_agent import ASSISTANTS, PM_MUTATION_TOOLS, PM_TOOLS, run_agent
-from ..agents.chat_tools import classify, kb_answer, progress_from_msg, stats_markdown, stats_overview
+from ..agents.chat_tools import classify, fallback_conversation, kb_response, progress_from_msg, stats_markdown, stats_overview
 from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..database import SessionLocal, get_db
@@ -40,7 +40,7 @@ def _sse(event: dict) -> bytes:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
-def _rule_fallback(db, user: User, project: Project, msg: str):
+def _rule_fallback(db, user: User, project: Project, msg: str, history=None):
     """规则降级链路：mock 模式 / 未配 key / Agent 首轮失败时启用，协议事件与 Agent 一致。"""
     if not msg:
         yield {"type": "delta", "text": "请输入您的问题，例如：3号楼12层的隐患整改到哪一步了？"}
@@ -48,7 +48,8 @@ def _rule_fallback(db, user: User, project: Project, msg: str):
         yield {"type": "done", "weekly_id": None}
         return
 
-    intent = classify(msg)
+    conversation = fallback_conversation(msg)
+    intent = "conversation" if conversation else classify(msg)
     logger.info("AI对话(规则降级) user=%s(%s) intent=%s project=%s msg=%s", user.name, user.role, intent, project.name, msg[:50])
     refs: list[dict] = []
     weekly_id = None
@@ -81,9 +82,12 @@ def _rule_fallback(db, user: User, project: Project, msg: str):
     elif intent == "stats":
         reply = stats_markdown(db, project_id=project.id)
         yield {"type": "artifact", "artifact": {"type": "stats_summary", "title": "治理统计", "data": stats_overview(db, project)}}
+    elif intent == "kb":
+        reply, refs, artifact = kb_response(db, msg, history=history)
+        yield {"type": "artifact", "artifact": artifact}
+
     else:
-        reply, refs = kb_answer(db, msg)
-        yield {"type": "artifact", "artifact": {"type": "clause_refs", "title": "规范依据", "data": {"refs": refs}}}
+        reply = conversation or "AI 理解服务暂时不可用，请补充具体对象和需求，例如工单编号、要查询的统计或具体安全问题。"
 
     yield {"type": "delta", "text": reply}
     yield {"type": "refs", "refs": refs}
@@ -262,7 +266,7 @@ def chat(
             if profile.key == "pm":
                 yield from stream(_pm_fallback(msg))
             else:
-                yield from stream(_rule_fallback(db, user, project, msg))
+                yield from stream(_rule_fallback(db, user, project, msg, history=history))
         finally:
             persist()  # 客户端中断 / 异常时兜底落库
             db.close()

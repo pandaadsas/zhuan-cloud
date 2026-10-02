@@ -65,6 +65,36 @@ class RetrievalTest(unittest.TestCase):
             keyword.assert_not_called()
 
 
+class HybridTest(unittest.TestCase):
+    def test_real_helmet_clause_recovered_outside_vector_pool(self):
+        corpus = parse_regulation_md(BUILTIN_MD_FILE.read_text(encoding="utf-8"))
+        cache = [dict(r, id=i, doc_name="规范") for i, r in enumerate(corpus)]
+        unrelated = [dict(r, score=0.8) for r in cache if r["clause_no"] in ("第6.0.13条", "第2.0.5条", "第3.15.1条")]
+        with patch.object(retriever, "_cache", cache), patch.object(retriever, "_search_vector", return_value=unrelated):
+            for query in ("工人在工地干活时必须戴安全帽吗", "施工现场 作业人员 安全帽 佩戴要求", "进入施工现场必须佩戴安全帽 个人防护用品 要求"):
+                results, mode = retriever.search_with_mode(None, query, 3)
+                self.assertEqual(mode, "hybrid")
+                self.assertIn("第3.2.1条", [r["clause_no"] for r in results])
+                self.assertEqual(len(results), 3)
+
+    def test_merge_preserves_vector_first_dedup_and_content(self):
+        vector = [entry("3.2.1", "完整正文A"), entry("3.2.2", "完整正文B")]
+        lexical = [entry("3.2.3", "完整正文C"), vector[0]]
+        original = [dict(r) for r in vector]
+        result = retriever._merge_candidates(vector, lexical, 3)
+        self.assertEqual([r["clause_no"] for r in result], ["第3.2.1条", "第3.2.3条", "第3.2.2条"])
+        self.assertEqual(result[1]["content"], "完整正文C")
+        self.assertEqual(vector, original)
+        self.assertEqual(len(retriever._merge_candidates(vector, vector, 4)), 2)
+
+    def test_no_lexical_matches_preserves_vector_mode_and_limit(self):
+        vector = [entry("3.2.1"), entry("3.2.2")]
+        with patch.object(retriever, "_cache", vector), patch.object(retriever, "_search_vector", return_value=vector), patch.object(retriever, "_search_lexical", return_value=[]):
+            results, mode = retriever.search_with_mode(None, "unmatched", 1)
+        self.assertEqual(mode, "vector")
+        self.assertEqual(results, vector[:1])
+
+
 class QueryTest(unittest.TestCase):
     def test_preserve_facts_and_no_description_compression(self):
         raw = "3号楼12层东侧护栏不足1.2m，未防护，不得继续作业，积水0.8m"

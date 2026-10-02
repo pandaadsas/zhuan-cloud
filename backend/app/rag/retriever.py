@@ -1,14 +1,16 @@
 """安全知识库检索（Chroma 本地向量库版）。
 
 条款规模（百条级）不需要独立向量库服务：
-- 真实模式：qwen text-embedding 向量化，向量存入 Chroma 本地持久化目录
+- 真实模式：qwen text-embedding 向量化，结合本地 BM25 补召回；向量存入 Chroma 本地持久化目录
   （knowledge/chroma_data），按条款内容哈希增量更新——只重算新增或变动的条款；
 - 模拟模式：字符 bigram Jaccard 相似度，零 API 消耗。
 两种模式接口一致，后续可平滑升级为独立向量服务（Chroma Server / Qdrant / Milvus）。
 """
 import hashlib
 import logging
+import math
 import re
+from collections import Counter
 from pathlib import Path
 
 import chromadb
@@ -203,6 +205,66 @@ def _clause_numbers(query: str) -> list[str]:
     return list(dict.fromkeys(f"第{number}条" for number in numbers))
 
 
+def _lexical_tokens(text: str) -> list[str]:
+    """中文连续二字片段及完整英文/数字词；不引入分词依赖或特定条款词表。"""
+    tokens = []
+    for part in re.findall(r"[\u4e00-\u9fff]+|[a-z0-9]+(?:\.[0-9]+)*", text.lower()):
+        if re.fullmatch(r"[\u4e00-\u9fff]+", part):
+            tokens.extend(part[i:i + 2] for i in range(len(part) - 1))
+        else:
+            tokens.append(part)
+    return tokens
+
+
+def _search_lexical(query: str, k: int) -> list[dict]:
+    """BM25 本地补召回；仅索引标题和正文，避免公共规范名干扰术语权重。"""
+    terms = set(_lexical_tokens(query))
+    if not terms or not _cache:
+        return []
+    documents = [Counter(_lexical_tokens(f"{r['title']} {r['content']}")) for r in _cache]
+    lengths = [sum(d.values()) for d in documents]
+    average = sum(lengths) / len(documents) or 1
+    frequencies = {term: sum(term in d for d in documents) for term in terms}
+    scored = []
+    for item, counts, length in zip(_cache, documents, lengths):
+        score = 0.0
+        for term in terms:
+            count = counts.get(term, 0)
+            if count:
+                df = frequencies[term]
+                idf = math.log(1 + (len(documents) - df + 0.5) / (df + 0.5))
+                score += idf * count * 2.2 / (count + 1.2 * (0.25 + 0.75 * length / average))
+        if score > 0:
+            scored.append((score, item))
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+    return [{key: item[key] for key in ("doc_name", "clause_no", "title", "content", "tags")} | {"score": round(score, 4)}
+            for score, item in scored[:k]]
+
+
+def _merge_candidates(vector: list[dict], lexical: list[dict], k: int) -> list[dict]:
+    """保留向量首位，引入关键词前两位，再以向量优先补齐、去重。
+
+    确保仅出现在关键词通道的条款能进入小候选集；不把两种原始分数相加。
+    score 改为两通道倒数排名之和，仅作诊断，非相似度/支持概率；最终顺序按通道配额。
+    """
+    def key(row):
+        return row["doc_name"], row["clause_no"], row["content"]
+    scores = {}
+    for source in (vector, lexical):
+        for rank, row in enumerate(source, 1):
+            identity = key(row)
+            scores[identity] = scores.get(identity, 0.0) + 1 / (60 + rank)
+    merged, seen = [], set()
+    for row in vector[:1] + lexical[:2] + vector[1:] + lexical[2:]:
+        identity = key(row)
+        if identity not in seen:
+            merged.append(dict(row, score=round(scores[identity], 6)))
+            seen.add(identity)
+        if len(merged) >= k:
+            break
+    return merged
+
+
 def search_with_mode(db: Session, query: str, k: int = 4) -> tuple[list[dict], str]:
     """内部评测接口；模式逐次返回，避免用启动模式推断实际检索路径。"""
     if not query.strip() or k <= 0:
@@ -223,14 +285,30 @@ def search_with_mode(db: Session, query: str, k: int = 4) -> tuple[list[dict], s
                     } | {"score": 1.0})
         return results[:k], "exact"
     try:
-        results = _search_vector(query, k)
+        results = _search_vector(query, max(10, k))
     except Exception as e:
         logger.warning("Chroma 检索失败，降级关键词检索：%s", e)
         results = []
     if results:
-        return results, "vector"
+        lexical = _search_lexical(query, max(10, k))
+        if lexical:
+            return _merge_candidates(results, lexical, k), "hybrid"
+        return results[:k], "vector"
     return _search_keyword(query, k), "keyword"
 
 
 def search(db: Session, query: str, k: int = 4) -> list[dict]:
-    return search_with_mode(db, query, k)[0]
+    results, mode = search_with_mode(db, query, k)
+    if logger.isEnabledFor(logging.INFO):
+        details = []
+        for rank, item in enumerate(results, 1):
+            details.append(
+                f"候选 {rank}/{len(results)} | 《{item['doc_name']}》{item['clause_no']} "
+                f"{item['title']} | score={item['score']}\n"
+                f"正文：\n{item['content']}"
+            )
+        logger.info(
+            "RAG 检索结果（核验前候选；hybrid score为融合诊断分，非相似度） query=%r mode=%s k=%d 命中=%d\n%s\n检索结果结束",
+            query, mode, k, len(results), "\n\n".join(details) or "无候选条款",
+        )
+    return results

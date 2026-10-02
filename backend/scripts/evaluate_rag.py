@@ -173,7 +173,7 @@ def evaluate(mode, cases):
         raw = variants["optimized_raw"]["metrics"]["report"]
         candidate = variants["candidate_query"]["metrics"]["report"]
         semantic = [r for v in variants.values() for r in v["cases"] if r["type"] in ("report", "question")]
-        verified = mode == "vector" and sync_mode == "vector" and all(r["mode"] == "vector" for r in semantic)
+        verified = mode == "vector" and sync_mode == "vector" and all(r["mode"] in ("vector", "hybrid") for r in semantic)
         passes = (candidate["recall"] >= raw["recall"] and candidate["mrr"] >= raw["mrr"]
                   and (candidate["recall"] > raw["recall"] or candidate["mrr"] > raw["mrr"]))
         result = {"status": "verified" if mode == "keyword" or verified else "unverified",

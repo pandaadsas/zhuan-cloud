@@ -39,6 +39,7 @@ def get_cfg():
         qwen_vl_model=d.get("vl_model") or settings.qwen_vl_model,
         qwen_embed_model=d.get("embed_model") or settings.qwen_embed_model,
         qwen_asr_model=d.get("asr_model") or settings.qwen_asr_model,
+        rag_evidence_check_enabled=settings.rag_evidence_check_enabled,
         updated_at=d.get("updated_at"),
     )
 

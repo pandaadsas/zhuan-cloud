@@ -36,12 +36,14 @@
 
     <template v-else-if="artifact.type === 'clause_refs'">
       <button class="refs-toggle" :aria-expanded="expanded" @click="expanded = !expanded">
-        <span><el-icon><DocumentChecked /></el-icon><b>{{ refs.length }} 条规范依据</b><small>{{ refs[0]?.doc_name || '未检索到条款' }}</small></span>
+        <span><el-icon><DocumentChecked /></el-icon><b>{{ clauseEntries.length }} 条{{ artifact.title || '规范依据' }}</b><small>{{ clauseEntries[0]?.doc_name || '未检索到条款' }}</small></span>
         <el-icon class="chevron" :class="{ expanded }"><ArrowDown /></el-icon>
       </button>
+      <p v-if="data.notice" class="clause-notice">{{ data.notice }}</p>
       <div v-if="expanded" class="ref-list">
-        <div v-for="ref in refs" :key="`${ref.doc_name}-${ref.clause_no}`">
+        <div v-for="ref in clauseEntries" :key="`${ref.doc_name}-${ref.clause_no}`">
           <b>《{{ ref.doc_name }}》{{ ref.clause_no }}</b><span>{{ ref.title }}</span>
+          <p v-if="ref.content" class="clause-content">{{ ref.content }}</p>
         </div>
       </div>
     </template>
@@ -101,6 +103,7 @@ const expanded = ref(false)
 const data = computed(() => props.artifact.data || {})
 const orders = computed(() => data.value.orders || [])
 const refs = computed(() => data.value.refs || [])
+const clauseEntries = computed(() => data.value.status === 'unverified' ? (data.value.candidates || []) : refs.value)
 const overdueCount = computed(() => Array.isArray(data.value.overdue) ? data.value.overdue.length : (data.value.overdue || 0))
 const actionStatusLabel = computed(() => ({ completed: '已执行', cancelled: '已取消', failed: '执行失败', expired: '已过期' }[data.value.status] || data.value.status))
 const actionStatusType = computed(() => ({ completed: 'success', cancelled: 'info', failed: 'danger', expired: 'warning' }[data.value.status] || 'info'))
@@ -112,6 +115,8 @@ function statusType(status) {
 </script>
 
 <style scoped>
+.clause-notice { margin: 8px 14px; color: #946000; font-size: 12px; }
+.clause-content { white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
 .artifact { margin-top: 10px; overflow: hidden; border: 1px solid #dfe7f3; border-radius: 14px; background: #fff; }
 .artifact-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px 10px; }
 .artifact-head > div { min-width: 0; }

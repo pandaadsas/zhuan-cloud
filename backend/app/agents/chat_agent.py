@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ..config_runtime import get_cfg
 from ..models import ChatPendingAction, OrderEvent, Project, User, WorkOrder
 from ..serializers import order_to_dict
+from ..rag.evidence import ANSWER_RULES, answer_payload, check_evidence, enabled as evidence_enabled, evidence_artifact, render_evidence
 from .chat_tools import (
     find_order_markdown,
     orders_list_markdown,
@@ -44,10 +45,11 @@ ROLE_LABELS = {
 class Terminal:
     """终端工具输出：内容直接流式下发给用户，不经 LLM 改写（长周报等场景）。"""
 
-    def __init__(self, text: str, refs: list | None = None, weekly_id: int | None = None):
+    def __init__(self, text: str, refs: list | None = None, weekly_id: int | None = None, artifact: dict | None = None):
         self.text = text
         self.refs = refs or []
         self.weekly_id = weekly_id
+        self.artifact = artifact
 
 
 class Tool:
@@ -92,12 +94,20 @@ def _exec_stats(db: Session, user: User, project: Project, args: dict):
     return stats_overview(db, project), []
 
 
-def _exec_search(db: Session, user: User, project: Project, args: dict):
+def _exec_search(db: Session, user: User, project: Project, args: dict, *, question=None, history=None):
     from ..rag.retriever import search as kb_search
 
     query = str(args.get("query", ""))
     regs = kb_search(db, query, k=3)
     logger.info("Agent 检索规范 query=%s 命中=%d", query, len(regs))
+    if evidence_enabled():
+        evidence = check_evidence(question if question is not None else query, regs, query=query, history=history)
+        artifact = evidence_artifact(evidence)
+        if evidence["status"] in ("insufficient", "unverified") or evidence.get("original"):
+            return Terminal(render_evidence(evidence), refs=evidence["accepted_refs"], artifact=artifact)
+        payload = answer_payload(evidence)
+        payload["artifact"] = artifact
+        return payload, evidence["accepted_refs"]
     refs = [{"doc_name": r["doc_name"], "clause_no": r["clause_no"], "title": r["title"]} for r in regs]
     return json.dumps(regs, ensure_ascii=False), refs
 
@@ -136,7 +146,25 @@ def _exec_submit_hazard(db: Session, user: User, project: Project, args: dict):
     return submit_hazard(db, user, project, str(args.get("text") or ""))
 
 
+def _exec_conversation(db, user, project, args):
+    return Terminal(args["text"].strip())
+
+
+CONVERSATION_TOOLS = {"reply_directly", "ask_clarification"}
+
 TOOLS = [
+    Tool(
+        "reply_directly",
+        "仅用于问候、身份和系统能力介绍、致谢、告别、无关话题的简短回应。不得回答具体安全要求、规范数字、适用性、合规或现场处置判断，也不得编造项目数据或宣称已执行操作。单独调用。",
+        {"type": "object", "properties": {"text": {"type": "string", "description": "直接向用户发送的回复"}}, "required": ["text"], "additionalProperties": False},
+        _exec_conversation, "正在回复…",
+    ),
+    Tool(
+        "ask_clarification",
+        "结合对话历史仍无法确定对象或必要信息时，向用户提问；只询问信息，不给出未经核验的结论。单独调用。",
+        {"type": "object", "properties": {"text": {"type": "string", "description": "需要用户补充信息的问题"}}, "required": ["text"], "additionalProperties": False},
+        _exec_conversation, "需要补充信息",
+    ),
     Tool(
         "query_order_progress",
         "查询单个隐患整改工单的当前状态、责任人与最近流转记录。用户问进度/状态/到哪一步/整改完了吗时调用。",
@@ -179,7 +207,7 @@ TOOLS = [
         {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "检索关键词，如：临边防护栏杆高度要求"},
+                "query": {"type": "string", "description": "中性检索关键词，保留用户的核心对象、数字、否定词和适用条件；不得把疑问改成确定结论，不得扩大作业范围或用宽泛上位词替代具体对象。追问可用历史补全对象，如：施工现场 作业人员 安全帽 佩戴要求。"},
             },
             "required": ["query"],
         },
@@ -615,6 +643,8 @@ def _artifact_for_tool(
     if name == "query_stats" and isinstance(result, dict):
         return {"type": "stats_summary", "title": "治理统计", "data": result}
     if name == "search_regulations":
+        if isinstance(result, dict) and result.get("artifact"):
+            return result["artifact"]
         return {"type": "clause_refs", "title": "规范依据", "data": {"refs": refs}}
     if name in ("generate_weekly_report", "get_weekly_report", "list_weekly_reports"):
         return {"type": "weekly_report", "title": "安全周报", "data": {"weekly_id": weekly_id}}
@@ -665,13 +695,21 @@ def _pm_system_prompt(user: User, project: Project) -> str:
 
 def _system_prompt(user: User, project: Project) -> str:
     role = ROLE_LABELS.get(user.role, user.role)
+    evidence_rules = ("3a. 规范工具调用前只能说明处理进度，禁止提前给出规范结论。" + ANSWER_RULES + "\n") if evidence_enabled() else ""
     return (
         f"你是筑安云的现场安全AI助手，服务对象是{role}（姓名：{user.name}），当前项目「{project.name}」，"
         "回答使用 Markdown 中文。\n"
         "规则：\n"
+        "0. 首轮必须选择工具作为处理出口。普通交流、身份和系统能力介绍调用 reply_directly；"
+        "信息不足且历史无法补全时调用 ask_clarification；业务数据或操作选择相应工具。"
+        "安全要求、规范数字、适用性、合规判断及现场处置依据必须调用 search_regulations，"
+        "即使夹带问候或用户要求不检索也一样。不要因问候、能力介绍而查规范。"
+        "结合历史理解追问；没有上下文的「这样可以吗」应追问。"
+        "reply_directly 只用于首轮且必须单独调用；工具返回业务数据或核验结果后可直接组织最终回答。\n"
         "1. 涉及工单、统计数字、规范条款、区域/分包/周报的问题，必须先调用工具获取真实数据，禁止编造工单号、数字和条款。\n"
         "2. 用户消息省略了上文主语时（如追问「那2号楼呢」），结合对话历史理解后再选工具和参数。\n"
         "3. 规范依据一律来自 search_regulations 返回的条款，引用时标注《规范名》条款号；检索不到就明确说明。\n"
+        + evidence_rules +
         "4. 调用 generate_weekly_report / get_weekly_report 后，把返回内容原样输出，不要改写或增删。\n"
         "5. 用户想报隐患时调用 submit_hazard_report：若结果带 need_clarify=true，把其中的 question 原样问用户，"
         "拿到补充信息后把对话中已确认的内容合并成一段完整描述再次调用；成功后提醒用户工单已生成、"
@@ -782,7 +820,37 @@ def run_agent(
                 return
             raise RuntimeError(err)  # 尚未输出内容，让路由层走规则降级
 
-        for part in content_parts:
+        if "search_regulations" in tool_map:
+            try:
+                if _round == 0 and not tool_slots:
+                    raise ValueError("缺少首轮路由出口")
+                for slot in tool_slots.values():
+                    name = slot["name"]
+                    if name not in tool_map:
+                        raise ValueError("未知工具")
+                    args = json.loads(slot["arguments"] or "{}")
+                    if not isinstance(args, dict):
+                        raise ValueError("工具参数必须是对象")
+                    if name in CONVERSATION_TOOLS:
+                        if len(tool_slots) != 1 or set(args) != {"text"} or not isinstance(args["text"], str) or not args["text"].strip():
+                            raise ValueError("对话出口参数无效或与业务工具混用")
+                        if name == "reply_directly" and _round != 0:
+                            raise ValueError("直接回复出口仅用于首轮")
+                    if name == "search_regulations" and (not isinstance(args.get("query"), str) or not args["query"].strip()):
+                        raise ValueError("检索关键词为空")
+            except (ValueError, TypeError) as exc:
+                logger.warning("Agent 路由协议错误：%s", exc)
+                if streamed_any:
+                    yield {"type": "error", "message": "AI 未能完成本次请求，请补充说明或重试"}
+                    return
+                raise RuntimeError("AI 路由协议错误") from exc
+
+        # 工具轮次的模型文字可能提前泄露未经核验的结论；核验开启时仅显示固定进度。
+        checking_regulations = any(s["name"] == "search_regulations" for s in tool_slots.values())
+        visible_parts = ["正在查询并核验相关依据…"] if evidence_enabled(cfg) and checking_regulations else content_parts
+        if "search_regulations" in tool_map and tool_slots and not checking_regulations:
+            visible_parts = []  # 工具执行前不发布模型夹带的结论或重复的对话文本。
+        for part in visible_parts:
             streamed_any = True
             yield {"type": "delta", "text": part}
 
@@ -797,7 +865,7 @@ def run_agent(
             }
             for i, s in sorted(tool_slots.items())
         ]
-        messages.append({"role": "assistant", "content": "".join(content_parts) or None, "tool_calls": assistant_tool_calls})
+        messages.append({"role": "assistant", "content": "".join(visible_parts) or None, "tool_calls": assistant_tool_calls})
 
         for i, call in enumerate(assistant_tool_calls):
             name = call["function"]["name"]
@@ -806,7 +874,8 @@ def run_agent(
             except json.JSONDecodeError:
                 args = {}
             logger.info("Agent 工具调用 %s args=%s", name, args)
-            yield {"type": "tool", "name": name, "label": tool_map[name].label if name in tool_map else name, "args": args}
+            if name not in CONVERSATION_TOOLS:
+                yield {"type": "tool", "name": name, "label": tool_map[name].label if name in tool_map else name, "args": args}
 
             tool = tool_map.get(name)
             if tool is None:
@@ -825,11 +894,14 @@ def run_agent(
                 }
                 round_refs = []
             else:
-                out = tool.executor(db, user, project, args)
+                out = _exec_search(db, user, project, args, question=message, history=history) if name == "search_regulations" else tool.executor(db, user, project, args)
                 if isinstance(out, Terminal):
                     weekly_id = out.weekly_id
-                    refs += out.refs
-                    artifact = _artifact_for_tool(db, user, project, name, args, out.text, refs, weekly_id)
+                    if name == "search_regulations" and evidence_enabled(cfg):
+                        refs = out.refs  # 本次无法核验时，不沿用前一次工具的确认引用。
+                    else:
+                        refs += out.refs
+                    artifact = out.artifact or _artifact_for_tool(db, user, project, name, args, out.text, refs, weekly_id)
                     if artifact:
                         yield {"type": "artifact", "artifact": artifact}
                     yield {"type": "refs", "refs": _dedupe_refs(refs)}

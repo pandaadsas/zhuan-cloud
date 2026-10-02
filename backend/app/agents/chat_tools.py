@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..models import OrderEvent, WorkOrder, Zone
 from ..rag.retriever import search as kb_search
+from ..rag.evidence import check_evidence, enabled as evidence_enabled, evidence_artifact, render_evidence
 from ..serializers import STATUS_LABELS
 from .llm import chat_text, llm_ready
 
@@ -18,6 +19,17 @@ _FLOOR_RE = re.compile(r"(B\d{1,2}|负?\d{1,2})\s*层")
 _ORDER_NO_RE = re.compile(r"ZA-\d{8}-\d{3}")
 
 
+def fallback_conversation(msg: str) -> str | None:
+    """仅在模型不可用时完整匹配基本交流；正常模式由模型自主路由。"""
+    text = re.sub(r"[\s，,。.!！?？、；;：:]", "", msg).lower()
+    greeting = r"(?:你好|您好|嗨|哈喽|hello|hi|早上好|下午好|晚上好)"
+    if re.fullmatch(rf"{greeting}+(?:啊|呀)?|{greeting}*(?:请问)?(?:你是谁|你叫什么名字|你能做什么|你有什么功能|如何上报隐患|怎么上报隐患)", text):
+        return "你好，我是筑安云 AI 安全助手，可以协助查询工单、治理统计、安全规范和周报。上报隐患时，请描述位置和现场情况；可用操作取决于你的角色权限。"
+    if re.fullmatch(r"谢谢你?|多谢|好的|收到|明白了|再见|拜拜", text):
+        return "好的，有需要可以继续问我。"
+    return None
+
+
 def classify(msg: str) -> str:
     """规则意图分类：规则降级链路使用（Agent 模式下由 LLM 自主决策）。"""
     if any(k in msg for k in ("周报", "汇总一份", "安全情况汇总", "本周安全")):
@@ -26,9 +38,16 @@ def classify(msg: str) -> str:
         k in msg for k in ("进度", "到哪一步", "处理到哪", "工单状态", "整改完了吗")
     ):
         return "progress"
-    if any(k in msg for k in ("统计", "多少", "几单", "几份", "整改率", "超期", "分布", "情况")):
+    if any(k in msg for k in ("统计", "几单", "整改率", "超期")) or (
+        any(k in msg for k in ("工单", "待整改", "待审核", "闭环"))
+        and any(k in msg for k in ("多少", "几条", "分布", "情况"))
+    ):
         return "stats"
-    return "kb"
+    if re.search(r"(?<![\d.])\d+\.\d+\.\d+(?![\d.])", msg) or any(
+        k in msg for k in ("规范", "条款", "临边", "防护栏", "脚手架", "动火", "有限空间", "气体检测", "高处作业", "安全带", "安全帽", "施工用电", "消防", "洞口")
+    ):
+        return "kb"
+    return "clarify"
 
 
 def _order_markdown(db: Session, order: WorkOrder) -> str:
@@ -118,7 +137,7 @@ def stats_markdown(db: Session, project_id: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def kb_answer(db: Session, msg: str) -> tuple[str, list[dict]]:
+def _legacy_kb_answer(db: Session, msg: str) -> tuple[str, list[dict]]:
     """规范问答：向量/关键词检索 + LLM 组织回答，均有兜底。"""
     regs = kb_search(db, msg, k=3)
     logger.info("知识库检索 命中=%d", len(regs))
@@ -142,6 +161,21 @@ def kb_answer(db: Session, msg: str) -> tuple[str, list[dict]]:
     lines.append("")
     lines.append("建议按上述条款组织落实；如需生成整改工单，请到「隐患上报」页面提交。")
     return "\n".join(lines), refs
+
+
+def kb_response(db: Session, msg: str, history: list[dict] | None = None) -> tuple[str, list[dict], dict]:
+    if not evidence_enabled():
+        reply, refs = _legacy_kb_answer(db, msg)
+        return reply, refs, {"type": "clause_refs", "title": "规范依据", "data": {"refs": refs}}
+    regs = kb_search(db, msg, k=3)
+    evidence = check_evidence(msg, regs, query=msg, history=history)
+    # 规则降级直接渲染核验要点/原文，不再追加一次可能绕过拒答的生成。
+    return render_evidence(evidence), evidence["accepted_refs"], evidence_artifact(evidence)
+
+
+def kb_answer(db: Session, msg: str) -> tuple[str, list[dict]]:
+    reply, refs, _ = kb_response(db, msg)
+    return reply, refs
 
 
 # ---------- 能力面扩展：工单筛选 / 全量统计 / 站点目录 / 周报查询 / 隐患上报 ----------

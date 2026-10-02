@@ -13,6 +13,7 @@ from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
 from ..rag.retriever import search as kb_search
+from ..rag.evidence import check_evidence, enabled as evidence_enabled
 from .assessor import build_suggestion, deadline_days, finalize_risk
 from .dispatcher import match_responsible
 from .extractor import extract_hazard, need_clarify
@@ -42,6 +43,7 @@ class PipelineState(TypedDict, total=False):
     source_type: str
     extracted: dict
     regs: list
+    evidence: dict
     risk: str
     suggestion: str
     responsible: dict
@@ -70,12 +72,16 @@ def build_pipeline(db: Session, project_id: int | None = None):
         query = state["raw_text"]
         if REPORT_QUERY_OPTIMIZATION_ENABLED:
             query = build_report_query(query, state["extracted"])
-        return {"regs": kb_search(db, query, k=4)}
+        regs = kb_search(db, query, k=4)
+        if evidence_enabled():
+            evidence = check_evidence(state["raw_text"], regs, usage="report", query=query)
+            return {"regs": evidence["accepted_regs"], "evidence": evidence}
+        return {"regs": regs}
 
     def node_assess(state: PipelineState) -> PipelineState:
         risk = finalize_risk(state["extracted"])
         extracted = dict(state["extracted"], risk_level=risk)
-        suggestion = build_suggestion(extracted, state["regs"])
+        suggestion = build_suggestion(extracted, state["regs"], evidence=state["evidence"]) if "evidence" in state else build_suggestion(extracted, state["regs"])
         return {"risk": risk, "extracted": extracted, "suggestion": suggestion}
 
     def node_dispatch(state: PipelineState) -> PipelineState:
