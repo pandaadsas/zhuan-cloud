@@ -65,13 +65,16 @@
       </main>
 
       <footer class="composer-wrap">
-        <div v-if="messages.length" class="quick-row"><button v-for="q in ASSISTANT.quick.slice(0, 4)" :key="q" :disabled="sending" @click="send(q)">{{ q }}</button></div>
+        <div v-if="messages.length" class="quick-row"><button v-for="q in ASSISTANT.quick.slice(0, 4)" :key="q" :disabled="sending" @click="fillPrompt(q)">{{ q }}</button></div>
         <div class="composer" :class="{ focused: composerFocused }">
-          <el-input ref="inputEl" v-model="input" type="textarea" resize="none" :autosize="{ minRows: 1, maxRows: 5 }" :aria-label="`向${ASSISTANT.name}提问`" :placeholder="ASSISTANT.placeholder" @focus="composerFocused = true" @blur="composerFocused = false" @keydown.enter.exact.prevent="send()" />
-          <el-button v-if="sending" class="send-btn stop" circle aria-label="停止生成" @click="stop"><el-icon><VideoPause /></el-icon></el-button>
-          <el-button v-else class="send-btn" type="primary" circle :disabled="!input.trim()" aria-label="发送问题" @click="send()"><el-icon><Position /></el-icon></el-button>
+          <el-input ref="inputEl" v-model="input" type="textarea" resize="none" :autosize="{ minRows: 2, maxRows: 6 }" :aria-label="`向${ASSISTANT.name}提问`" :placeholder="ASSISTANT.placeholder" @focus="composerFocused = true" @blur="composerFocused = false" @keydown="onComposerKeydown" />
+          <div class="composer-toolbar">
+            <span class="composer-shortcuts">Enter 发送<span>·</span>Shift + Enter 换行</span>
+            <el-button v-if="sending" class="send-btn stop" circle aria-label="停止生成" title="停止生成" @click="stop"><el-icon><VideoPause /></el-icon></el-button>
+            <el-button v-else class="send-btn" type="primary" circle :disabled="!input.trim()" aria-label="发送问题" title="发送问题" @click="send()"><el-icon><Position /></el-icon></el-button>
+          </div>
         </div>
-        <div class="composer-hint">Enter 发送 · Shift + Enter 换行 · AI 内容仅供现场管理参考</div>
+        <div class="composer-hint">AI 内容仅供现场管理参考</div>
       </footer>
     </section>
 
@@ -176,6 +179,17 @@ onMounted(async () => { localStorage.removeItem('zhuan_chat_history'); await loa
 onBeforeUnmount(() => controller?.abort())
 function stop() { controller?.abort(); controller = null }
 
+function fillPrompt(prompt) {
+  input.value = prompt
+  nextTick(() => inputEl.value?.focus())
+}
+
+function onComposerKeydown(event) {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return
+  event.preventDefault()
+  send()
+}
+
 async function send(preset) {
   const text = (typeof preset === 'string' ? preset : input.value).trim()
   if (!text || sending.value) return
@@ -247,8 +261,19 @@ async function resolveAction(artifact, confirm) {
 .bubble { padding:12px 15px;border:1px solid #e1e7f0;border-radius:5px 16px 16px;background:#fff;box-shadow:0 3px 12px rgba(18,44,86,.045);font-size:13px;line-height:1.7;overflow-wrap:anywhere }.message.me .bubble { width:fit-content;max-width:100%;color:#fff;border-color:transparent;border-radius:16px 5px 16px 16px;background:#2459d3;box-shadow:0 7px 18px rgba(36,89,211,.16);white-space:pre-wrap }.bubble.failed { border-color:#f0caca }
 .tool-trace { display:flex;align-items:center;gap:7px;margin-bottom:8px;color:#68768e;font-size:10px }.tool-trace.done { color:#6c987e }.spinner { width:11px;height:11px;border:2px solid #dbe3ef;border-top-color:#2459d3;border-radius:50%;animation:spin .8s linear infinite }.typing { display:flex;gap:4px;padding:5px 1px }.typing i { width:5px;height:5px;border-radius:50%;background:#91a0b8;animation:typing 1s ease-in-out infinite }.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
 .message-actions { min-height:24px;margin-top:2px;opacity:0;transition:opacity .15s }.message:hover .message-actions { opacity:1 }.message-actions .el-button { color:#8490a4;font-size:10px }.legacy-refs { display:grid;gap:4px;margin-top:10px;padding:9px 10px;border-radius:9px;background:#f3f6fb }.legacy-refs b { color:#6c7890;font-size:10px }.legacy-refs span { color:#2459d3;font-size:11px }.error-inline { display:flex;align-items:center;gap:7px;margin-top:8px;padding:8px 10px;border-radius:9px;color:#b34242;background:#fff1f1;font-size:11px }.error-inline span { flex:1 }
-.composer-wrap { flex:0 0 auto;padding:8px 18px 11px;border-top:1px solid #e8edf4;background:#fff }.quick-row { display:flex;gap:7px;max-width:900px;margin:0 auto 7px;overflow-x:auto }.quick-row button { flex:0 0 auto;padding:5px 10px;border:1px solid #e2e8f1;border-radius:99px;color:#647189;background:#fafbfe;font-size:10px;cursor:pointer }.quick-row button:hover { color:#2459d3;border-color:#b8c8eb;background:#f3f7ff }
-.composer { display:flex;align-items:flex-end;gap:9px;max-width:900px;margin:0 auto;padding:8px 8px 8px 13px;border:1px solid #d9e1ec;border-radius:15px;background:#fff;box-shadow:0 6px 18px rgba(25,50,92,.07);transition:border-color .18s,box-shadow .18s }.composer.focused { border-color:#9eb3e5;box-shadow:0 8px 22px rgba(36,89,211,.11) }.composer :deep(.el-textarea__inner) { min-height:28px!important;padding:4px 0;border:0;background:transparent;box-shadow:none;line-height:20px }.send-btn { flex:0 0 auto;width:34px;height:34px }.send-btn.stop { color:#fff;background:#263550 }.composer-hint { margin-top:5px;color:#a0a9b8;font-size:9px;text-align:center }
+.composer-wrap { flex:0 0 auto;padding:12px 18px 10px;border-top:1px solid #edf0f5;background:#fff }
+.quick-row { display:flex;gap:8px;max-width:900px;margin:0 auto 10px;padding:3px;overflow-x:auto }
+.quick-row button { flex:0 0 auto;padding:6px 11px;border:1px solid transparent;border-radius:8px;color:#66738b;background:#f5f7fa;font:inherit;font-size:12px;line-height:18px;cursor:pointer;transition:color .18s,background .18s }
+.quick-row button:hover:not(:disabled) { color:#2459d3;background:#edf3ff }.quick-row button:disabled { opacity:.5;cursor:not-allowed }
+.composer { display:flex;flex-direction:column;gap:8px;max-width:900px;margin:0 auto;padding:14px 14px 10px;border:1px solid #dce3ed;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(25,50,92,.035);transition:border-color .18s,box-shadow .18s }
+.composer.focused { border-color:#8ba7e5;box-shadow:0 0 0 3px rgba(36,89,211,.06) }
+.composer :deep(.el-textarea__inner) { padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;font-family:inherit;font-size:14px;line-height:24px;color:#263550 }
+.composer :deep(.el-textarea__inner:focus-visible) { outline:none }.composer :deep(.el-textarea__inner::placeholder) { color:#929daf }
+.composer-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px }
+.composer-shortcuts { color:#8490a4;font-size:11px;line-height:18px }.composer-shortcuts span { margin:0 7px;color:#b7bfcc }
+.send-btn { flex:0 0 auto;width:36px;height:36px;margin-left:auto;font-size:17px;box-shadow:none }.send-btn.stop { color:#fff;border-color:#263550;background:#263550 }.send-btn.stop:hover { border-color:#3b4d6a;background:#3b4d6a }
+.composer-hint { margin-top:8px;color:#8a96a9;font-size:11px;line-height:16px;text-align:center }
+@media (max-width:600px) { .composer { padding:12px 12px 8px;border-radius:14px }.composer-shortcuts { display:none } }
 .mobile-rail { display:flex;height:100%;flex-direction:column;gap:12px;padding:14px;background:#f7f9fc }.mobile-rail-title { display:flex;align-items:center;justify-content:space-between }.mobile-rail>.new-btn { width:100%;height:40px;flex:0 0 40px }.mobile-rail .session-list { flex:1 }
 @keyframes spin { to { transform:rotate(360deg) } } @keyframes typing { 0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)} }
 @media (max-width:900px) { .chat-page { height:calc(100dvh - 108px);min-height:520px }.session-rail { display:none }.mobile-sessions { display:inline-flex }.message-column { max-width:min(86%,720px) } }
