@@ -2,7 +2,7 @@
 
 > 对应代码：`backend/app/rag/retriever.py`（检索核心）、`backend/app/services/knowledge.py`（知识入库）、`backend/app/agents/llm.py`（embedding 调用）、`backend/app/config.py`（模型配置）
 >
-> 一句话概括：**规范 Markdown 启动时切片入业务数据库（MySQL或SQLite），向量存入 Chroma 本地持久化库（`knowledge/chroma_data`），按条款内容哈希增量更新**——没有独立向量库服务，双模式（向量 / 关键词）接口一致，可静默降级。
+> 一句话概括：**规范 Markdown 启动时切片入业务数据库（MySQL或SQLite），向量存入 Chroma 本地持久化库（`knowledge/chroma_data`），按条款内容哈希增量更新**——没有独立向量库服务，真实模式为向量+本地BM25混合召回，向量失败静默降级字符 bigram Jaccard，接口一致。
 
 本文按链路拆分为 **4 个阶段** 分段讲解，每段配独立的 Mermaid 流程图。
 
@@ -24,7 +24,7 @@ backend/knowledge/规范.md（原始文档层）
                        │                            │
                        ▼                            │
             search(db, query, k) 相似度计算 ─────────┘
-         真实模式：HNSW 近邻（cosine）｜降级模式：bigram Jaccard
+      真实模式：HNSW 近邻（cosine）+ 本地 BM25 混合召回｜降级模式：bigram Jaccard
 ```
 
 | 组成部分 | 实现 | 位置 |
@@ -33,7 +33,7 @@ backend/knowledge/规范.md（原始文档层）
 | 条款存储 | MySQL/SQLite `Regulation` 表（`source='builtin'`，启动时幂等同步；`import` 预留给未来文档导入管线） | `models.py` |
 | 向量模型 | 阿里云 DashScope `text-embedding-v4`（默认值，可运行时配置覆盖） | `config.py` |
 | 向量存储 | Chroma 嵌入式客户端，持久化目录 `backend/knowledge/chroma_data/`，集合名带模型名 | `retriever.py` |
-| 相似度计算 | Chroma HNSW 近邻（真实）/ 字符 bigram Jaccard（降级） | `retriever.py` |
+| 相似度计算 | 向量 HNSW 近邻 + 本地 BM25 混合召回（真实）/ 字符 bigram Jaccard（降级） | `retriever.py` |
 | 调用方 | ① LangGraph `retrieve` 节点（k=4）；② 安全助手 `search_regulations` 工具及规则降级 `kb_answer`（k=3） | `agents/graph.py`、`agents/chat_agent.py`、`agents/chat_tools.py` |
 
 ---
@@ -102,29 +102,32 @@ flowchart TD
 
 ---
 
-## 4. 阶段③：检索执行——真实模式（Chroma HNSW 近邻）
+## 4. 阶段③：检索执行——真实模式（向量召回 + BM25 混合）
 
-`search(db, query, k)` 的向量分支：
+`search_with_mode(db, query, k)` 的真实分支：先取向量候选，再做本地 BM25 补召回并合并（`mode=hybrid`）；仅当向量有结果而关键词无候选时返回纯向量结果。
 
 ```mermaid
 flowchart TD
-    A["search(db, query, k)<br/>retriever.py"] --> B{"内存 _cache 是否就绪？"}
+    A["search_with_mode(db, query, k)<br/>retriever.py"] --> B{"内存 _cache 是否就绪？"}
     B -- "否" --> C["先调 refresh_cache()"]
     B -- 是 --> D["_search_vector<br/>embed_texts([query]) 查询向量化"]
     D --> E{"拿到查询向量？<br/>且集合 count > 0？"}
     E -- "否" --> H["落入阶段④降级分支"]
-    E -- 是 --> F["col.query(query_embeddings, n_results=min(k,total))<br/>HNSW 近邻搜索，include distances"]
+    E -- 是 --> F["col.query(query_embeddings,<br/>n_results=min(max(10,k), total))<br/>HNSW 近邻搜索，include distances"]
     F --> G["按 id 回填 _cache 元数据<br/>score = max(0, 1 - cosine_distance)<br/>（Chroma 里已查到但缓存没有的 id<br/>= 刚删除的条款，跳过）"]
-    G --> I{"结果非空？"}
-    I -- 是 --> J["返回：doc_name / clause_no /<br/>title / content / tags /<br/>score（4位小数）"]
+    G --> G2["_search_lexical：对条款标题与正文<br/>做本地 BM25（中文二字片段，无分词依赖）"]
+    G2 --> G3["_merge_candidates：<br/>保留向量第一条，补入 BM25 前两条，<br/>再按向量优先补齐，去重后截取 k 条"]
+    G3 --> I{"结果非空？"}
+    I -- 是 --> J["返回 mode=hybrid：doc_name / clause_no /<br/>title / content / tags /<br/>score（两通道倒数排名融合诊断分）"]
     I -- "否（含异常：try/except 兜底）" --> H
 ```
 
 要点：
 
 - **近似搜索交给 Chroma**，应用层不再自己写余弦循环；cosine distance → 相似度的换算只有一行（`1 - dist`）；
+- **BM25 是补召回而非重排**：融合 score（两通道 `1/(60+rank)` 之和）仅用于诊断日志，实际顺序由通道配额（向量首位 → BM25 前两位 → 向量优先补齐）决定，不把不同检索器的原始分数互相比较，也不作为拒答门槛；
 - 内存 `_cache` 是**详情的唯一出口**：Chroma 只回 id 和 distance，条款文本/标签从 `_cache` 按 id 取——向量库损坏也不影响结果拼装的 correctness（大不了整体降级）；
-- `search()` 外层还包了一层 try/except：Chroma 客户端异常同样静默落进关键词模式，**降级链共三层**（llm 未就绪 → 同步失败 → 检索失败/空结果）；
+- `search_with_mode()` 外层还包了一层 try/except：Chroma 客户端异常同样静默落进关键词模式，**降级链共三层**（llm 未就绪 → 同步失败 → 检索失败/空结果）；
 - 返回结构是干净的 dict 列表，调用方（工单草稿的 `regulation_refs`、对话回答的 `refs`）直接可用。
 
 ---
@@ -165,7 +168,7 @@ bigram 即相邻两字滑动窗口（如"消防通道" → `{消防,防通,通�
 1. **增量更新**：逐条 `content_hash` 比对，改一条只重算一条；条款无变动时重启**零 embedding 调用**，向量直接从磁盘复用。
 2. **向量持久化**：Chroma `PersistentClient` 落盘，向量有了单一事实源（不再有"表字段 + 缓存文件"两份向量各存一份的二义性），`Regulation.embedding` 字段已闲置退役。
 3. **模型隔离**：集合名含 embedding 模型名，换模型自动新集合全量重建，不会新旧向量混算。
-4. **双模式同构 + 三层降级**：向量 / 关键词返回结构完全一致；llm 未就绪、同步失败、检索异常均静默落关键词，演示场景零外部依赖。
+4. **混合召回 + 三层降级**：真实模式向量叠加本地 BM25 补召回，无新增分词依赖；llm 未就绪、同步失败、检索异常均静默落关键词，各模式返回结构一致，演示场景零外部依赖。
 5. **结构化切分**：一条条款即一个 chunk，命中即可给出精确条文引用，答辩可讲可验证。
 
 ### 7.2 局限（升级动因）
@@ -197,7 +200,7 @@ Chroma 本地嵌入式（现状）
 - 上报检索启用 `build_report_query`：删除抽取结果明确匹配的楼栋、楼层，前置隐患类型；保留原文中的部位、数字和否定事实。不额外调用 LLM。该开关依据真实向量评测启用，可以在 `graph.py` 中关闭以恢复原始查询。第 6 节的 `raw_text` 调用表描述的是原始基线。
 - 支持 `3.2.3` / `第3.2.3条`，多个编号按出现顺序去重，匹配同编号的记录按 ID 排序。精确匹配的 `score=1.0` 表示编号命中，不是 cosine 相似度。
 - 处置建议继续使用前三条，但不再截取每条前 80 字；规范名、编号、标题和完整正文共用 8,000 字符预算，超预算跳过完整条款并记日志，不截断正文。工单最多保留四条引用。
-- 对外 `search(db, query, k) -> list[dict]` 不变；内部 `search_with_mode` 额外返回 `exact/vector/keyword/empty`，用于评测真实执行路径。
+- 对外 `search(db, query, k) -> list[dict]` 不变；内部 `search_with_mode` 额外返回 `exact/hybrid/vector/keyword/empty`，用于评测真实执行路径。
 - 40 条固定样例覆盖上报 20 条、问答 10 条、编号 5 条、知识库外问题 5 条。评测使用内存 SQLite、独立临时 Chroma 目录，阻止业务数据库导入连接，不使用设置页配置。向量配置取环境变量或 `.env`；实际发生降级时不能通过真实模式验收。
 - [评测报告](RAG轻量优化评测报告.md) 包含结果、边界及下一阶段候选；[逐条结果](RAG轻量优化评测.json) 保存语料哈希、实际模式、耗时和 Top-10 诊断。未加入混合检索、rerank 或未经校准的相似度门槛。
 

@@ -100,16 +100,19 @@ flowchart TD
 flowchart TD
     A[retrieve 调用 search k=4] --> B{内存缓存已加载}
     B -->|否| C[refresh_cache 加载条款 并尝试增量向量同步]
-    B -->|是| D[embed_texts 查询向量化]
+    B -->|是| D[build_report_query 用抽取结果优化查询<br/>删除已抽取的楼栋楼层 前置隐患类型]
     C --> D
     D --> E{向量可用且 Chroma 检索成功}
-    E -->|是| F[HNSW cosine 搜索 按 id 回填条款 取 Top4]
+    E -->|是| F[HNSW cosine 取 Top-max 10,k<br/>叠加本地 BM25 补召回 混合去重后取 Top4]
     E -->|否| G[bigram Jaccard 排序 过滤零重叠 取 Top4]
-    F --> H[返回条款与相似度]
+    F --> H[返回条款与 score]
     G --> H
+    H --> I{RAG_EVIDENCE_CHECK_ENABLED<br/>默认关闭}
+    I -->|开启| J[check_evidence 核验候选条款<br/>仅通过的条款进入 regs 与引用]
+    I -->|关闭| K[全部候选直接进入 regs]
 ```
 
-向量存储说明（真实模式）：条款向量存入 **Chroma 本地向量库**（`backend/knowledge/chroma_data/`，依赖已列入requirements，嵌入式无独立服务）。`refresh_cache()` 按条款内容 MD5 哈希**逐条比对、增量更新**——只对新增或变动的条款重新调用 embedding（每批上限 10 条），删除的条款同步从集合移除；集合名带 embedding 模型名，换模型时自动全量重建。检索时余弦相似度由 Chroma HNSW 索引完成（cosine distance → 相似度换算）。Chroma运行时失败或向量化失败时自动降级关键词检索。
+向量存储说明（真实模式）：条款向量存入 **Chroma 本地向量库**（`backend/knowledge/chroma_data/`，依赖已列入requirements，嵌入式无独立服务）。`refresh_cache()` 按条款内容 MD5 哈希**逐条比对、增量更新**——只对新增或变动的条款重新调用 embedding（每批上限 10 条），删除的条款同步从集合移除；集合名带 embedding 模型名，换模型时自动全量重建。检索时余弦相似度由 Chroma HNSW 索引完成（cosine distance → 相似度换算），同时在条款标题与正文上做本地 BM25 补召回（中文二字片段，无新增依赖），合并去重后返回；上报查询经 `build_report_query` 优化并经真实向量评测验证（见 [RAG轻量优化评测报告](RAG轻量优化评测报告.md) 与 [RAG安全帽召回优化](RAG安全帽召回优化.md)）。Chroma运行时失败或向量化失败时自动降级关键词检索。开启依据核验后（`RAG_EVIDENCE_CHECK_ENABLED`，默认关闭），仅核验通过的条款进入处置建议与工单引用；依据不足或无法核验时仍生成待审核工单，引用为空并注明待人工核实。
 
 ### 4.2 assess：风险定级与处置建议
 
@@ -120,10 +123,10 @@ flowchart TD
     C --> D{"描述含重大关键词？<br/>重大危险源 / 大面积坍塌 /<br/>人员被困 / 坠落已发生"}
     D -- 是 --> E["定级 = 重大"]
     D -- 否 --> F["定级 = LLM 初判 与<br/>类型底线 的较高者"]
-    E --> G["build_suggestion(extracted, regs)<br/>assessor.py"]
+    E --> G["build_suggestion(extracted, regs, evidence?)<br/>assessor.py"]
     F --> G
     G --> H{"chat_text 调用成功？"}
-    H -- 是 --> I["LLM 建议：引用检索条款，<br/>按 立即措施/整改要求/预防措施<br/>三段输出，150 字内"]
+    H -- 是 --> I["LLM 建议：引用检索条款，<br/>按 立即措施/整改要求/预防措施<br/>三段输出，150 字内；<br/>核验开启时只使用已支持要点，<br/>未获支持部分注明待核实"]
     H -- "否（模拟模式）" --> J["模板引擎：IMMEDIATE_ACTIONS<br/>按类型取立即措施 +<br/>拼接引用条款 + 整改/预防段落"]
     I --> K["输出 risk + suggestion"]
     J --> K
@@ -210,8 +213,8 @@ sequenceDiagram
         RT->>DB: 仅保存 Report
         RT-->>FE: 返回追问话术
     else 抽取成功
-        LG->>KB: search(raw_text, k=4)
-        KB-->>LG: Top-4 规范条款
+        LG->>KB: search(build_report_query(raw_text), k=4)<br/>向量+BM25混合检索；核验开启时仅保留通过条款
+        KB-->>LG: Top-4 规范条款（含核验状态）
         LG->>LLM: chat_text 生成处置建议
         LLM-->>LG: 三段式建议文本
         LG->>DB: match_responsible 查 Zone/Subcontractor/User
