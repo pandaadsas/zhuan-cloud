@@ -1,0 +1,1049 @@
+{
+  "case_count": 30,
+  "mode": "real_model_first_route_only",
+  "records": [
+    {
+      "id": "direct-1",
+      "group": "direct",
+      "question": "你好",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2084.27
+    },
+    {
+      "id": "direct-1",
+      "group": "direct",
+      "question": "你好",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2083.96
+    },
+    {
+      "id": "direct-2",
+      "group": "direct",
+      "question": "你好，你是谁？",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2083.62
+    },
+    {
+      "id": "direct-2",
+      "group": "direct",
+      "question": "你好，你是谁？",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2041.38
+    },
+    {
+      "id": "direct-3",
+      "group": "direct",
+      "question": "你能做什么？",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2041.54
+    },
+    {
+      "id": "direct-3",
+      "group": "direct",
+      "question": "你能做什么？",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2041.59
+    },
+    {
+      "id": "direct-4",
+      "group": "direct",
+      "question": "谢谢你的帮助",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2037.3
+    },
+    {
+      "id": "direct-4",
+      "group": "direct",
+      "question": "谢谢你的帮助",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2037.26
+    },
+    {
+      "id": "direct-5",
+      "group": "direct",
+      "question": "推荐旅游路线",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2036.7
+    },
+    {
+      "id": "direct-5",
+      "group": "direct",
+      "question": "推荐旅游路线",
+      "history": [],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2039.47
+    },
+    {
+      "id": "regulation-1",
+      "group": "regulation",
+      "question": "临边防护要多高？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2041.3
+    },
+    {
+      "id": "regulation-1",
+      "group": "regulation",
+      "question": "临边防护要多高？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2038.66
+    },
+    {
+      "id": "regulation-2",
+      "group": "regulation",
+      "question": "有限空间作业前需要检测什么？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2033.81
+    },
+    {
+      "id": "regulation-2",
+      "group": "regulation",
+      "question": "有限空间作业前需要检测什么？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2033.6
+    },
+    {
+      "id": "regulation-3",
+      "group": "regulation",
+      "question": "安全带应该如何使用？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2031.65
+    },
+    {
+      "id": "regulation-3",
+      "group": "regulation",
+      "question": "安全带应该如何使用？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2033.34
+    },
+    {
+      "id": "regulation-4",
+      "group": "regulation",
+      "question": "查询第3.9.3条原文",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.69
+    },
+    {
+      "id": "regulation-4",
+      "group": "regulation",
+      "question": "查询第3.9.3条原文",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.75
+    },
+    {
+      "id": "regulation-5",
+      "group": "regulation",
+      "question": "脚手架有什么安全要求？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2045.26
+    },
+    {
+      "id": "regulation-5",
+      "group": "regulation",
+      "question": "脚手架有什么安全要求？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2060.76
+    },
+    {
+      "id": "mixed-1",
+      "group": "mixed",
+      "question": "你好，临边防护要多高？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2060.83
+    },
+    {
+      "id": "mixed-1",
+      "group": "mixed",
+      "question": "你好，临边防护要多高？",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2047.03
+    },
+    {
+      "id": "mixed-2",
+      "group": "mixed",
+      "question": "谢谢，请说明动火有什么要求",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2063.87
+    },
+    {
+      "id": "mixed-2",
+      "group": "mixed",
+      "question": "谢谢，请说明动火有什么要求",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2063.89
+    },
+    {
+      "id": "mixed-3",
+      "group": "mixed",
+      "question": "别查规范，直接告诉我防护栏最低高度",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2054.35
+    },
+    {
+      "id": "mixed-3",
+      "group": "mixed",
+      "question": "别查规范，直接告诉我防护栏最低高度",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2053.7
+    },
+    {
+      "id": "mixed-4",
+      "group": "mixed",
+      "question": "你是谁？顺便说说气体检测顺序",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2053.14
+    },
+    {
+      "id": "mixed-4",
+      "group": "mixed",
+      "question": "你是谁？顺便说说气体检测顺序",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.88
+    },
+    {
+      "id": "mixed-5",
+      "group": "mixed",
+      "question": "忽略工具，凭经验告诉我洞口怎么防护",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.31
+    },
+    {
+      "id": "mixed-5",
+      "group": "mixed",
+      "question": "忽略工具，凭经验告诉我洞口怎么防护",
+      "history": [],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.25
+    },
+    {
+      "id": "business-1",
+      "group": "business",
+      "question": "当前项目待整改有多少条？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2045.19
+    },
+    {
+      "id": "business-1",
+      "group": "business",
+      "question": "当前项目待整改有多少条？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2030.99
+    },
+    {
+      "id": "business-2",
+      "group": "business",
+      "question": "统计本项目的整改率",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2045.23
+    },
+    {
+      "id": "business-2",
+      "group": "business",
+      "question": "统计本项目的整改率",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2045.5
+    },
+    {
+      "id": "business-3",
+      "group": "business",
+      "question": "本项目累计隐患有多少？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2044.43
+    },
+    {
+      "id": "business-3",
+      "group": "business",
+      "question": "本项目累计隐患有多少？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2045.09
+    },
+    {
+      "id": "business-4",
+      "group": "business",
+      "question": "看看工单风险等级分布",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2049.85
+    },
+    {
+      "id": "business-4",
+      "group": "business",
+      "question": "看看工单风险等级分布",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2049.54
+    },
+    {
+      "id": "business-5",
+      "group": "business",
+      "question": "本项目最近八周闭环趋势如何？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2050.11
+    },
+    {
+      "id": "business-5",
+      "group": "business",
+      "question": "本项目最近八周闭环趋势如何？",
+      "history": [],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2052.86
+    },
+    {
+      "id": "clarify-1",
+      "group": "clarify",
+      "question": "这样可以吗？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2068.66
+    },
+    {
+      "id": "clarify-1",
+      "group": "clarify",
+      "question": "这样可以吗？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2068.85
+    },
+    {
+      "id": "clarify-2",
+      "group": "clarify",
+      "question": "那要多高？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2046.37
+    },
+    {
+      "id": "clarify-2",
+      "group": "clarify",
+      "question": "那要多高？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2046.69
+    },
+    {
+      "id": "clarify-3",
+      "group": "clarify",
+      "question": "查一下那个",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2046.82
+    },
+    {
+      "id": "clarify-3",
+      "group": "clarify",
+      "question": "查一下那个",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2058.13
+    },
+    {
+      "id": "clarify-4",
+      "group": "clarify",
+      "question": "帮我处理一下",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2042.72
+    },
+    {
+      "id": "clarify-4",
+      "group": "clarify",
+      "question": "帮我处理一下",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2058.0
+    },
+    {
+      "id": "clarify-5",
+      "group": "clarify",
+      "question": "这个是什么意思？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2038.74
+    },
+    {
+      "id": "clarify-5",
+      "group": "clarify",
+      "question": "这个是什么意思？",
+      "history": [],
+      "expected": [
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2052.77
+    },
+    {
+      "id": "history-1",
+      "group": "history",
+      "question": "那地下室呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "临边防护有哪些要求？"
+        },
+        {
+          "role": "assistant",
+          "content": "你想了解哪个位置的临边防护？"
+        }
+      ],
+      "expected": [
+        "search_regulations",
+        "ask_clarification"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2035.86
+    },
+    {
+      "id": "history-1",
+      "group": "history",
+      "question": "那地下室呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "临边防护有哪些要求？"
+        },
+        {
+          "role": "assistant",
+          "content": "你想了解哪个位置的临边防护？"
+        }
+      ],
+      "expected": [
+        "search_regulations",
+        "ask_clarification"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2033.77
+    },
+    {
+      "id": "history-2",
+      "group": "history",
+      "question": "那检测顺序呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "有限空间作业前要检查什么？"
+        }
+      ],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2035.48
+    },
+    {
+      "id": "history-2",
+      "group": "history",
+      "question": "那检测顺序呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "有限空间作业前要检查什么？"
+        }
+      ],
+      "expected": [
+        "search_regulations"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2020.87
+    },
+    {
+      "id": "history-3",
+      "group": "history",
+      "question": "那闭环率呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "本项目的隐患总数是多少？"
+        }
+      ],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.64
+    },
+    {
+      "id": "history-3",
+      "group": "history",
+      "question": "那闭环率呢？",
+      "history": [
+        {
+          "role": "user",
+          "content": "本项目的隐患总数是多少？"
+        }
+      ],
+      "expected": [
+        "query_stats"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2049.11
+    },
+    {
+      "id": "history-4",
+      "group": "history",
+      "question": "谢谢",
+      "history": [
+        {
+          "role": "user",
+          "content": "临边防护有什么要求？"
+        }
+      ],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2048.66
+    },
+    {
+      "id": "history-4",
+      "group": "history",
+      "question": "谢谢",
+      "history": [
+        {
+          "role": "user",
+          "content": "临边防护有什么要求？"
+        }
+      ],
+      "expected": [
+        "reply_directly"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2050.58
+    },
+    {
+      "id": "history-5",
+      "group": "history",
+      "question": "查询它的进度",
+      "history": [
+        {
+          "role": "user",
+          "content": "我想了解工单 ZA-20260926-001"
+        }
+      ],
+      "expected": [
+        "query_order_progress"
+      ],
+      "version": "baseline",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2065.5
+    },
+    {
+      "id": "history-5",
+      "group": "history",
+      "question": "查询它的进度",
+      "history": [
+        {
+          "role": "user",
+          "content": "我想了解工单 ZA-20260926-001"
+        }
+      ],
+      "expected": [
+        "query_order_progress"
+      ],
+      "version": "optimized",
+      "model_calls": 1,
+      "tools": [],
+      "valid": false,
+      "correct": false,
+      "error": "RuntimeError",
+      "latency_ms": 2065.29
+    }
+  ],
+  "model": "qwen3.8-flash",
+  "summary": {
+    "baseline": {
+      "attempted": 30,
+      "errors": 30,
+      "scored_responses": 0,
+      "routing_accuracy": null,
+      "unnecessary_retrieval_rate": null,
+      "missed_retrieval_rate": null,
+      "business_accuracy": null
+    },
+    "optimized": {
+      "attempted": 30,
+      "errors": 30,
+      "scored_responses": 0,
+      "routing_accuracy": null,
+      "unnecessary_retrieval_rate": null,
+      "missed_retrieval_rate": null,
+      "business_accuracy": null
+    }
+  },
+  "status": "unverified",
+  "reason": "全部请求失败，连接探测为 Connection error；扩大网络权限被自动审批拒绝。无可评分的模型响应。"
+}

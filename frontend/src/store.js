@@ -7,6 +7,30 @@ export const userStore = reactive({
   user: stored,
 })
 
+// 当前项目上下文：经 X-Project-Id 请求头跟随所有 API 请求
+// id 统一为数字，保证与选项 value 严格相等（否则刷新后 el-select 显示原始 id）
+export const projectStore = reactive({
+  id: Number(localStorage.getItem('zhuan_project')) || '',
+  list: [],
+})
+
+export const currentProject = computed(
+  () => projectStore.list.find((p) => p.id === projectStore.id) || null,
+)
+
+export function setProject(id) {
+  projectStore.id = id
+  localStorage.setItem('zhuan_project', id)
+}
+
+export function setProjectList(list) {
+  projectStore.list = list
+  // 未选择或所选项目已不存在时，落到第一个项目
+  if (!list.some((p) => p.id === projectStore.id)) {
+    setProject(list[0]?.id ?? '')
+  }
+}
+
 export const isLoggedIn = computed(() => !!userStore.token)
 
 export function setAuth(token, user) {

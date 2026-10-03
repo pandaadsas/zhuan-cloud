@@ -32,6 +32,7 @@ def order_to_dict(o: WorkOrder, brief: bool = False) -> dict:
     d = {
         "id": o.id,
         "order_no": o.order_no,
+        "project_id": o.project_id,
         "title": o.title,
         "building": o.building,
         "floor": o.floor,

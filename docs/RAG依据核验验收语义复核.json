@@ -1,0 +1,339 @@
+{
+  "report_sha256": "8c3e8847386867b26246aec1515781eb2986875b8b7b750431b38d88988028ae",
+  "cases_sha256": "2808d1d55f2e9e388893b29af3260f5ee016a587e6421ead7245b989af817271",
+  "judge_prompt_sha256": "c4b1de3882576cac9ec75b7c64fc0ce97efcd0909808788ac1e83c25fc677980",
+  "reviewer": "Codex实现侧逐条对照仓库全文、模型证据及两版本答案；非独立人工或领域专家复核",
+  "domain_expert_reviewed": false,
+  "qa": {
+    "S11": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.5.1支持严禁超挖及设计工况；生成超时后以核验要点和原文确定性渲染。"
+    },
+    "P11": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留超挖禁止及设计条件；明确挖掘机品牌缺依据。"
+    },
+    "S12": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.5.10支持混凝土强度达到规定要求后拆模。"
+    },
+    "P12": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留拆模条件；没有补造统一MPa数值。"
+    },
+    "S13": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.6.3明确安全、保险、报警装置不得随意拆除。"
+    },
+    "P13": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "仅回答禁止拆除；明确强制更换月份缺依据。"
+    },
+    "S14": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.3.2支持运至地面和严禁抛掷。"
+    },
+    "P14": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留禁止抛掷；罚款金额未补造。"
+    },
+    "S15": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.12.4支持露天指定爆破类型5min、无法确认盲炮15min；回答保留进入检查条件。"
+    },
+    "P15": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留5min和15min条件；明确计时器品牌缺依据。"
+    },
+    "S16": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.9.4禁止室内装修以苯作稀释剂。"
+    },
+    "P16": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留室内装修苯禁用；替代产品厂家缺依据。"
+    },
+    "S17": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "4.0.6支持施工污水沉淀处理后排入市政污水管网。"
+    },
+    "P17": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留沉淀处理要求；明确沉淀池统一长宽未规定。"
+    },
+    "S18": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": false,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "返回candiate_id/id/text，缺少candidate_id/quote；本地拒绝，仅展示未经核验候选。充分支持回答未完成。"
+    },
+    "P18": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "6.0.3支持维修电工绝缘鞋、手套及紧口工作服；明确品牌缺依据。"
+    },
+    "S19": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.10.1明确采用剩余电流动作保护电器仍需PE。"
+    },
+    "P19": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": false,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "返回candidat_id/id/text，缺少规定证据字段；本地拒绝。本例未保留已支持部分，只展示候选。"
+    },
+    "S20": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "5.0.11支持封闭垃圾箱、分类投放和及时清运。"
+    },
+    "P20": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留垃圾要求；明确统一容积缺依据。"
+    },
+    "U11": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "菜谱不属条款；基线与优化均没有补造制作方法。"
+    },
+    "U12": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "旅游行程不属条款；两版均说明无依据。"
+    },
+    "U13": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "机票价格不属条款；未补造价格。"
+    },
+    "U14": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "二次方程求根不属条款；两版均未给规范结论。"
+    },
+    "U15": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "MySQL索引不属条款；未补造规范支持。"
+    },
+    "U16": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "房贷计算不属条款；未补造利率或利息。"
+    },
+    "U17": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "篮球冠军不属条款；未猜测冠军。"
+    },
+    "U18": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "手机推荐不属条款；未补造推荐。"
+    },
+    "U19": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "文学作者不属条款；未给规范支持。"
+    },
+    "U20": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "快递送达时间不属条款；未补造时间。"
+    },
+    "M11": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有施工升降机指定采购型号。"
+    },
+    "M12": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范有防护要求，没有安全网网眼目数。"
+    },
+    "M13": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范规定吊索性能荷载，没有统一夹角度数。"
+    },
+    "M14": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有基坑水位分钟记录频率。"
+    },
+    "M15": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有气瓶使用间距米数；基线超时未获得答案，不纳入基线误答率。"
+    },
+    "M16": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范规定足够强度等，没有栏杆水平荷载牛顿数值。"
+    },
+    "M17": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有急救人员年度培训小时数。"
+    },
+    "M18": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范规定噪声防治方案，没有夜间统一分贝上限。"
+    },
+    "M19": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范要求冷藏设施，没有冷藏摄氏温度。"
+    },
+    "M20": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范不包含项目联系人电话号码。"
+    }
+  },
+  "reports": {
+    "R01": {
+      "grounded": true,
+      "notes": "3.2.3支持井口防护和禁拆。建议生成超时后使用一般处置模板及明确的已核验依据段，引用只对应3.2.3。"
+    },
+    "R02": {
+      "grounded": true,
+      "notes": "3.10.5支持断电隔离、确认、上锁与警示。一般模板与最后已核验依据分段，引用仅该条；三级配电等既有模板内容不作为本次核验依据。"
+    },
+    "R03": {
+      "grounded": true,
+      "notes": "3.3.2支持运至地面、禁止抛掷及上下同时作业；生成降级后已核验段保持该条件。"
+    },
+    "R04": {
+      "grounded": true,
+      "notes": "井口防护引用3.2.3；工资金额明确待核实，未编造金额；一般模板和核验要点分段。"
+    },
+    "R05": {
+      "grounded": true,
+      "notes": "真实生成只引用3.10.5支持的断电、验电、上锁及警示，品牌待核实；缺失提示保留。"
+    },
+    "R06": {
+      "grounded": true,
+      "notes": "抛掷引用3.3.2；保险赔付金额待核实，未补造金额。"
+    },
+    "R07": {
+      "grounded": true,
+      "notes": "工资争议无规范依据，工单引用为空，使用现有一般模板并提示人工核实；基线把无关条款放在依据抬头，需区分建议与法规。"
+    },
+    "R08": {
+      "grounded": true,
+      "notes": "指定灯具品牌无规范依据，引用为空且有人工核实提示。"
+    },
+    "R09": {
+      "grounded": true,
+      "notes": "应急电话具体值无依据，引用为空且有人工核实提示。"
+    },
+    "R10": {
+      "grounded": true,
+      "notes": "注入TimeoutError，只有一般处置模板及待核实提示；不生成规范结论，引用为空，风险责任未改变。"
+    },
+    "R11": {
+      "grounded": true,
+      "notes": "注入TimeoutError，引用为空；保留现有临时用电一般处置模板并明确待核实，不把模板内容当已核验依据。"
+    },
+    "R12": {
+      "grounded": true,
+      "notes": "注入TimeoutError，引用为空、提示待核实；待审核草稿继续生成。"
+    }
+  }
+}

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     qwen_vl_model: str = "qwen-vl-plus"
     qwen_embed_model: str = "text-embedding-v4"
     qwen_asr_model: str = "qwen3-asr-flash"
+    # 通过真实模式依据核验验收后开启，可用环境变量回退。
+    rag_evidence_check_enabled: bool = False
 
     token_secret: str = "zhuan-cloud-demo-secret-2026"
     token_expire_minutes: int = 4320  # 3天

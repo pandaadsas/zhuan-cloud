@@ -1,4 +1,5 @@
 """系统设置：API Key 与模型选择（存库即时生效，供组员各自填 Key 测试）。"""
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
@@ -11,6 +12,7 @@ from ..config_runtime import get_cfg, invalidate
 from ..database import SessionLocal, get_db
 from ..models import AppConfig, User
 
+logger = logging.getLogger("zhuan.settings")
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
@@ -70,6 +72,9 @@ def save_settings(payload: SettingsIn, user: User = Depends(get_current_user)):
     finally:
         db.close()
     invalidate()
+    logger.info("系统设置已更新 by=%s mock_mode=%s api_key=%s models=text:%s,vl:%s,embed:%s,asr:%s",
+                user.name, payload.mock_mode, _mask(payload.api_key.strip()),
+                payload.text_model, payload.vl_model, payload.embed_model, payload.asr_model)
     return {"ok": True}
 
 
@@ -88,4 +93,5 @@ def test_connection(payload: TestIn, user: User = Depends(get_current_user)):
         )
         return {"ok": True, "reply": r.choices[0].message.content.strip(), "model": payload.model}
     except Exception as e:
+        logger.warning("AI 连接测试失败 model=%s error=%s", payload.model, str(e)[:220])
         return {"ok": False, "error": str(e)[:220]}

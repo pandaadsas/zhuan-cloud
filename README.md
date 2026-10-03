@@ -8,9 +8,18 @@ AI自动完成**信息抽取 → 知识库检索（规范条款）→ 风险定�
 
 支持**邮箱验证码注册登录**（注册可选角色：安全员/安全总监/项目经理/分包责任人），四角色四套工作界面；内置模拟引擎与真实大模型**双引擎一键切换**。
 
+当前版本新增 **AI安全助手（9工具）**、**项目管理助手（11工具，仅项目经理）**，支持服务端会话恢复、工具状态与业务结果卡片；项目管理写操作须在预览卡片确认后执行。
+
 **📚 文档目录**（点开即看）：
 - [项目技术说明文档](docs/说明文档_筑安云.md) —— 背景痛点、功能全景、Agent架构、创新点（答辩主文档，Word版在 `docs/筑安云_项目技术说明文档.docx`）
 - [演示视频拍摄脚本](docs/演示视频拍摄脚本.md) —— 2分钟分镜+讲解词（Word版：`docs/筑安云_演示视频拍摄脚本.docx`）
+- [隐患上报Agent主链路说明](docs/隐患上报Agent主链路说明.md) —— 上报流水线与共用落库服务
+- [RAG检索实现分析](docs/RAG检索实现分析.md) —— 条款切片、Chroma增量检索与混合召回
+- [RAG依据核验评测报告](docs/RAG依据核验评测报告.md) —— 相关性、部分回答、拒答与失败降级
+- [RAG轻量优化评测报告](docs/RAG轻量优化评测报告.md) —— 编号精确匹配、上报查询优化与完整条款上下文
+- [RAG安全帽召回优化](docs/RAG安全帽召回优化.md) —— BM25补召回诊断与真实embedding对比
+- [RAG路由优化说明](docs/RAG路由优化说明.md) —— 安全助手意图路由与强制检索取消
+- [智能助手与聊天工作区说明](docs/智能助手与聊天工作区说明.md) —— 工具、权限、SSE、会话与操作确认
 - 本 README —— 怎么跑起来、技术栈、演示账号
 
 ## 30秒看懂它长什么样
@@ -36,33 +45,43 @@ AI自动完成**信息抽取 → 知识库检索（规范条款）→ 风险定�
 |---|---|---|
 | Agent编排 | **LangGraph** 状态机 | 抽取→追问判定→检索→定级→匹配→工单草稿，节点可独立替换引擎 |
 | 后端 | **FastAPI** + SQLAlchemy 2.0 | REST API，多层角色权限 |
-| 前端 | **Vue3 + Element Plus + ECharts** | 四角色工作台、AI对话、数据看板 |
-| 数据库 | **MySQL 8.4**（阿里云） | SQLite本地兜底开关，演示断网不翻车 |
-| 知识库 | 规范条款 + 轻量向量检索 | 真实模式=通义text-embedding-v4余弦；模拟模式=bigram相似度 |
+| 前端 | **Vue3 + Element Plus + ECharts** | 四角色工作台、双助手聊天工作区、业务卡片、数据看板 |
+| 数据库 | **MySQL / SQLite** | 优先连接配置的MySQL，不可达时回退本地SQLite |
+| 知识库 | 规范Markdown切片 + Chroma | 真实模式=通义向量+本地BM25混合召回；降级模式=bigram Jaccard；可选依据核验 |
 | 大模型 | 通义千问（DashScope兼容模式） | qwen-flash文本 / qwen-vl-plus图片 / qwen3-asr-flash语音 |
 
 **双模式设计**：`MOCK_MODE=true`（默认）时全部AI能力走内置模拟引擎，**零API消耗**；
-填入 `DASHSCOPE_API_KEY` 并将 `MOCK_MODE` 改为 `false` 即切换真实AI，前端横幅自动显示当前引擎。
+填入 `DASHSCOPE_API_KEY` 并将 `MOCK_MODE` 改为 `false` 即切换真实AI，界面显示当前引擎。安全助手的规则降级覆盖基本交流、进度、统计、规范问答与本周周报，其余请求会提示补充信息，不再默认转向知识库；完整9工具能力及项目管理助手依赖真实AI。项目管理助手无规则执行链，AI不可用时提示前往项目管理页。
+
+真实模式下安全助手与隐患上报共用一套**依据核验**（`RAG_EVIDENCE_CHECK_ENABLED`，示例配置默认关闭）：规范回答只引用核验通过的条款（supported/partial/insufficient/unverified 四种内部状态），无法核验时展示候选条款原文；隐患上报始终生成待审核工单，无有效依据时引用为空并注明待人工核实。
 
 ## 快速启动（本地演示）
 
-**最简方式（推荐，Windows）**：下载/克隆本仓库后，双击根目录 **`一键启动.bat`** —— 自动创建环境、安装依赖、启动服务并打开浏览器（首次约2-5分钟，之后秒开）。无需 Node、无需 MySQL、无需任何 API Key：默认使用内置模拟引擎 + 本地 SQLite 演示库，开箱即用。
+**单端口演示（Windows）**：准备Python 3.11+、Node.js/npm；先进入 `frontend` 执行 `npm install`、`npm run build`，再双击根目录 **`一键启动.bat`**。脚本在后端虚拟环境不存在时创建环境并安装Python依赖，然后启动服务并打开浏览器。
+
+`frontend/dist` 被Git忽略，克隆后必须自行构建，前端更新后也需重新构建。脚本本身不安装Node或构建前端。已有虚拟环境时，依赖更新需重新执行 `pip install -r backend/requirements.txt`。首次安装依赖需要网络，完成后模拟模式无需AI Key，可本地演示。
 
 <details>
 <summary>手动命令行方式（macOS/Linux 或想看过程）</summary>
 
-```bash
-# 1. 后端（首次运行自动建表+灌入演示数据，数据库不可达时自动回退SQLite）
-cd backend
-python -m venv .venv                      # Python 3.11+
-.venv\Scripts\activate                    # Windows；macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
-python -m uvicorn app.main:app --port 8000
+```powershell
+# 从项目根目录开始，先构建前端
+cd frontend
+npm install
+npm run build
 
-# 2. 浏览器打开 http://127.0.0.1:8000 （前端构建产物已随仓库提供，无需Node）
-#    如需修改前端：cd frontend && npm install && npm run dev（开发模式，5173端口）
+# 再启动后端（首次建表、迁移、初始化数据；MySQL不可达时回退SQLite）
+cd ../backend
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 浏览器打开 http://127.0.0.1:8000
 ```
+
+macOS/Linux将 `.venv/Scripts/python.exe` 替换为 `.venv/bin/python`。开发模式可在另一个终端进入 `frontend` 执行 `npm run dev`，访问 `http://localhost:5173`，API代理至8000端口。
 </details>
+
+依赖准备好后可用 `scripts/start_all.bat` 启动前后端开发服务。后端应从 `backend` 目录启动，SQLite回退文件为该工作目录下的 `local_fallback.db`。邮箱验证码实际发送需配置SMTP。
 
 **接入真实 AI / 云端数据库**：复制 `backend/.env.example` 为 `backend/.env` 填入配置；或启动后在网页左侧菜单「系统设置」里直接填 API Key、选模型（保存即生效）。默认模拟引擎不消耗任何额度，断网可演示。
 
@@ -72,13 +91,15 @@ python -m uvicorn app.main:app --port 8000
 - **公网访问**：部署到服务器，或本机用 cpolar/natapp 等内网穿透生成临时公网链接
 - **各测各的**：克隆仓库各自本地跑，AI Key 在「系统设置」页各填各的
 
-## 演示账号（密码均为 `zhuan@123`）
+## 演示账号（初始密码均为 `123456`）
+
+种子初始化不会重置已有账号密码。3号楼初始区域责任人为恒盛劳务赵强（`zeren02`），演示整改时使用工单实际指派的账号。
 
 | 角色 | 账号 | 说明 |
 |---|---|---|
 | 安全员 张明 | `zhangmin` | 上报隐患、审核派单、复查闭环 |
 | 安全总监 李强 | `liqiang` | 看板/周报；重大风险工单须由其复核 |
-| 项目经理 王建国 | `wangjianguo` | 看板/周报 |
+| 项目经理 王建国 | `wangjianguo` | 看板/周报、项目管理、双助手 |
 | 分包责任人（6人） | `zeren01`~`zeren06` | 接收工单、整改、提交复查 |
 
 ## 工单状态机
@@ -98,9 +119,7 @@ python -m uvicorn app.main:app --port 8000
 
 ## 知识库
 
-`backend/knowledge/regulations.json`：49条精选条款（GB 55034-2022强制性规范、JGJ 80-2016高处作业、
-JGJ 130-2011脚手架、GB 50720-2011消防、JGJ 46-2005临时用电、JGJ 196-2010塔吊、JGJ 215-2010升降机、
-GB 50497-2019基坑监测、项目安全管理制度）。条款为要点精简演示版，正式使用以现行有效文本为准。
+内置原文为 `backend/knowledge/建筑与市政施工现场安全卫生与职业健康通用规范.md`。启动时按编号条款切片、幂等同步到 `regulations` 表，替代旧版49条种子库；数量以当前文件解析结果为准。真实模式先取向量候选，再对条款标题与正文做本地BM25补召回（中文二字片段，无新增依赖），合并去重后返回；向量失败仍降级字符 bigram Jaccard。向量存入 `backend/knowledge/chroma_data/`，按内容哈希增量更新。生成上下文不再截断正文，前三条规范按8,000字符预算完整纳入。当前没有通用文件导入和来源优先级排序功能。
 
 ## 项目结构
 
@@ -108,16 +127,24 @@ GB 50497-2019基坑监测、项目安全管理制度）。条款为要点精简�
 zhuan-cloud/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/        # LangGraph流水线、抽取/定级/匹配引擎、LLM抽象
-│   │   ├── rag/           # 知识检索（向量/关键词双模式）
-│   │   ├── routers/       # auth/meta/reports/orders/chat/stats/weekly/media
-│   │   ├── services/      # 语音转写、图片识别、周报生成、Word导出
-│   │   ├── models.py      # 9张表：users/subcontractors/zones/reports/work_orders/order_events/regulations/weekly_reports/projects
+│   │   ├── agents/        # 隐患流水线、对话Agent、安全9工具、项目管理11工具
+│   │   ├── rag/           # 知识检索（向量+BM25混合召回）与依据核验
+│   │   ├── routers/       # auth/meta/projects/reports/orders/chat/stats/weekly/settings/media
+│   │   ├── services/      # 共用上报落库、规范切片、语音/视觉、周报与Word导出
+│   │   ├── models.py      # 14张表，含验证码、运行时配置、会话、消息、待确认操作
 │   │   └── seed.py        # 幂等演示数据：项目/分包/人员/分区/条款/六周历史工单
 │   └── knowledge/         # 规范条款知识库
 ├── frontend/              # Vue3 + Element Plus + ECharts
 └── scripts/               # 一键启动脚本
 ```
+
+## 智能助手与验证
+
+安全助手可查询工单、统计、规范、周报、项目目录；真实模式下安全员与安全总监可明确要求对话上报，生成待审核草稿。真实模式下由模型自主路由：普通交流直接回复、信息不足先追问、规范问题必须检索并核验，取消了"首轮未调用工具就强制检索规范"的兜底。项目管理助手仅项目经理可见；新增、编辑和删除区域等写操作先生成预览卡片，点击确认后才执行。确认token绑定用户与项目、10分钟有效、不可重复执行；有关联工单的区域不能删除。
+
+聊天工作区支持历史恢复、复制、停止生成、错误重试和移动端历史抽屉。停止请求不会撤销已执行操作。会话按用户、项目、助手隔离，JSONL导出接口目前不含业务卡片。
+
+在 `backend` 目录运行 `.venv/Scripts/python.exe -m unittest discover -s tests -v` 验证聊天协议；在 `frontend` 目录运行 `npm run build` 验证前端构建。
 
 ## 安全提示
 

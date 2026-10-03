@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from ..agents.llm import chat_text
+from ..deps import get_current_project
 from ..models import User, WeeklyReport, WorkOrder
 
 logger = logging.getLogger("zhuan.weekly")
@@ -122,13 +123,19 @@ def _template_md(s: dict) -> str:
     return "\n".join(lines)
 
 
-def generate_weekly(db: Session, start: date, end: date, creator: User) -> WeeklyReport:
+def generate_weekly(db: Session, start: date, end: date, creator: User, project_id: int | None = None) -> WeeklyReport:
     stats = collect_stats(db, start, end)
     md = chat_text(WEEKLY_SYSTEM_PROMPT, "统计数据JSON：\n" + str(stats))
     if not md:
         md = _template_md(stats)
     md = md + f"\n\n---\n*筑安云AI自动生成｜{datetime.now():%Y-%m-%d %H:%M}*"
-    report = WeeklyReport(week_start=start, week_end=end, content_md=md, stats_json=stats)
+    report = WeeklyReport(
+        project_id=project_id if project_id is not None else get_current_project(db).id,
+        week_start=start,
+        week_end=end,
+        content_md=md,
+        stats_json=stats,
+    )
     db.add(report)
     db.commit()
     db.refresh(report)

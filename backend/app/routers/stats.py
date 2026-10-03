@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from ..agents.llm import llm_ready
 from ..auth import get_current_user
 from ..database import db_mode, get_db
-from ..models import User, WorkOrder
+from ..deps import current_project
+from ..models import Project, User, WorkOrder
 from .orders import sweep_overdue
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
@@ -16,7 +17,16 @@ OPEN_STATUSES = ("pending_review", "dispatched", "rectifying", "recheck")
 
 
 @router.get("/overview")
-def overview(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def overview(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
+    return overview_data(db, project)
+
+
+def overview_data(db: Session, project: Project) -> dict:
+    """全量统计看板数据；chatbot 的 query_stats 工具复用同一份聚合。"""
     sweep_overdue(db)
     # 单查询聚合：避免对远程库多次串行往返（每次 ~0.4s）
     rows = db.query(
@@ -31,7 +41,7 @@ def overview(db: Session = Depends(get_db), user: User = Depends(get_current_use
         WorkOrder.created_at,
         WorkOrder.closed_at,
         WorkOrder.responsible_user_id,
-    ).all()
+    ).filter(WorkOrder.project_id == project.id).all()
 
     total = len(rows)
     status_counts = dict(Counter(r.status for r in rows))

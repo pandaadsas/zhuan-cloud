@@ -20,7 +20,38 @@ class ActionIn(BaseModel):
 
 class ChatIn(BaseModel):
     message: str
+    session_id: int | None = None  # 空 = 开启新会话，后端落库后经 done 事件返回 id
+    assistant: str = "safety"  # 智能助手：safety=AI 安全助手 / pm=项目管理助手（仅项目经理）
+
+
+class ChatActionIn(BaseModel):
+    confirm: bool
 
 
 class WeeklyGenIn(BaseModel):
     offset: int = 0  # 0=本周，-1=上周
+
+
+class ProjectIn(BaseModel):
+    name: str
+    location: str = ""
+    total_area: str = ""
+    scale_desc: str = ""
+    current_stage: str = ""
+    note: str = ""
+
+
+class ZoneIn(BaseModel):
+    name: str
+    zone_type: str = ""
+    floor_count: int = 0
+    current_stage: str = ""
+    subcontractor_id: int | None = None
+    responsible_user_id: int | None = None
+
+
+class SubcontractorIn(BaseModel):
+    name: str
+    scope: str = ""
+    leader_name: str = ""
+    leader_phone: str = ""

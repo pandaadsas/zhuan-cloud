@@ -9,9 +9,12 @@ __pycache__/
 *.pyc
 backend/local_fallback.db
 backend/knowledge/embeddings_cache.json
+backend/knowledge/chroma_data/
+backend/.rag-eval-*/
 
 # ===== Node / 构建产物 =====
 node_modules/
+frontend/dist/
 
 # ===== 运行时上传 =====
 backend/uploads/audio/*
@@ -21,3 +24,9 @@ backend/uploads/misc/*
 
 .DS_Store
 Thumbs.db
+
+# ===== PyCharm =====
+.idea
+
+# ==== Zcode ====
+.Zcode

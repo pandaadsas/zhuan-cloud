@@ -5,6 +5,7 @@
 状态机即业务流程，节点可独立替换（规则引擎/LLM引擎），答辩可讲可演示。
 """
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import TypedDict
 
@@ -12,11 +13,29 @@ from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
 from ..rag.retriever import search as kb_search
+from ..rag.evidence import check_evidence, enabled as evidence_enabled
 from .assessor import build_suggestion, deadline_days, finalize_risk
 from .dispatcher import match_responsible
 from .extractor import extract_hazard, need_clarify
 
 logger = logging.getLogger("zhuan.graph")
+
+# 40 条固定样例的真实向量评测通过：Recall@4 持平，MRR 提升；详见 docs/RAG轻量优化评测报告.md。
+REPORT_QUERY_OPTIMIZATION_ENABLED = True
+
+
+def build_report_query(raw_text: str, extracted: dict) -> str:
+    text = raw_text
+    for field in ("building", "floor"):
+        value = extracted.get(field)
+        if value:
+            # 防止把 3号楼 从 13号楼中删除，或把 2层 从 12层中删除。
+            text = re.sub(r"(?<![\d.])" + re.escape(value), " ", text)
+    text = re.sub(r"\s+", " ", text).strip() or raw_text
+    hazard_type = extracted.get("hazard_type", "")
+    if hazard_type and hazard_type != "其他-待归类":
+        text = f"{hazard_type.replace('-', ' ')} {text}"
+    return text
 
 
 class PipelineState(TypedDict, total=False):
@@ -24,6 +43,7 @@ class PipelineState(TypedDict, total=False):
     source_type: str
     extracted: dict
     regs: list
+    evidence: dict
     risk: str
     suggestion: str
     responsible: dict
@@ -47,18 +67,25 @@ def _route_after_extract(state: PipelineState) -> str:
     return "clarify" if need_clarify(state["extracted"]) else "retrieve"
 
 
-def build_pipeline(db: Session):
+def build_pipeline(db: Session, project_id: int | None = None):
     def node_retrieve(state: PipelineState) -> PipelineState:
-        return {"regs": kb_search(db, state["raw_text"], k=4)}
+        query = state["raw_text"]
+        if REPORT_QUERY_OPTIMIZATION_ENABLED:
+            query = build_report_query(query, state["extracted"])
+        regs = kb_search(db, query, k=4)
+        if evidence_enabled():
+            evidence = check_evidence(state["raw_text"], regs, usage="report", query=query)
+            return {"regs": evidence["accepted_regs"], "evidence": evidence}
+        return {"regs": regs}
 
     def node_assess(state: PipelineState) -> PipelineState:
         risk = finalize_risk(state["extracted"])
         extracted = dict(state["extracted"], risk_level=risk)
-        suggestion = build_suggestion(extracted, state["regs"])
+        suggestion = build_suggestion(extracted, state["regs"], evidence=state["evidence"]) if "evidence" in state else build_suggestion(extracted, state["regs"])
         return {"risk": risk, "extracted": extracted, "suggestion": suggestion}
 
     def node_dispatch(state: PipelineState) -> PipelineState:
-        return {"responsible": match_responsible(db, state["extracted"])}
+        return {"responsible": match_responsible(db, state["extracted"], project_id=project_id)}
 
     def node_draft(state: PipelineState) -> PipelineState:
         ext, resp = state["extracted"], state["responsible"]
@@ -109,9 +136,9 @@ def build_pipeline(db: Session):
     return g.compile()
 
 
-def process_report(db: Session, raw_text: str, source_type: str = "text") -> dict:
+def process_report(db: Session, raw_text: str, source_type: str = "text", project_id: int | None = None) -> dict:
     """跑完整流水线，返回结果（不落库，由路由层持久化）。"""
-    app = build_pipeline(db)
+    app = build_pipeline(db, project_id=project_id)
     final = app.invoke({"raw_text": raw_text, "source_type": source_type})
     return {
         "need_clarify": final.get("need_clarify", False),

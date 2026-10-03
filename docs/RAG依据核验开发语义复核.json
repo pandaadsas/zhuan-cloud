@@ -1,0 +1,290 @@
+{
+  "report_sha256": "40387a5ca45eb136a3089c5f44ea4c1a82d6e1510e5b8a7adc3cf41c958d95dc",
+  "cases_sha256": "2808d1d55f2e9e388893b29af3260f5ee016a587e6421ead7245b989af817271",
+  "judge_prompt_sha256": "c4b1de3882576cac9ec75b7c64fc0ce97efcd0909808788ac1e83c25fc677980",
+  "reviewer": "Codex实现侧逐条对照仓库全文、模型证据及两版本答案；非独立人工或领域专家复核",
+  "domain_expert_reviewed": false,
+  "qa": {
+    "S01": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "2m及以上、防护及劳动防护用品均由3.2.1支持。"
+    },
+    "P01": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留2m条件，明确安全带品牌无依据。"
+    },
+    "S02": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": false,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "本地拒绝了短于8字符的摘录；仅展示候选原文，不作规范结论。本例未完成充分支持回答。"
+    },
+    "P02": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.2.3支持低于1.2m防护及禁止拆除；明确立柱间距缺依据。"
+    },
+    "S03": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.2.6支持雷雨和5级以上大风停工。"
+    },
+    "P03": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "仅回答天气停工条件，未补造赔偿金额。"
+    },
+    "S04": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.4.1明确禁止在吊物下停留或通过。"
+    },
+    "P04": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留禁止通过；警戒半径缺依据。"
+    },
+    "S05": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.4.7明确最高处风速超过9.0m/s停止安装拆卸。"
+    },
+    "P05": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留风速条件；明确风速仪型号无依据。"
+    },
+    "S06": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.9.3支持氧气、可燃、有毒有害的检测顺序。"
+    },
+    "P06": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "顺序有依据，检测仪型号未获支持。"
+    },
+    "S07": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.10.4支持36V上限及禁止自耦变压器。"
+    },
+    "P07": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留电压和禁止事项，未补造检定周期。"
+    },
+    "S08": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.10.5支持禁止带电、隔离确认断电、上锁及警示。"
+    },
+    "P08": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "回答断电措施，明确罚款金额缺依据。"
+    },
+    "S09": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "3.14.1支持超过0.5m积水采取防护。"
+    },
+    "P09": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留0.5m条件，未补造钢管壁厚。"
+    },
+    "S10": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "4.0.1支持覆盖、固化或绿化。"
+    },
+    "P10": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "保留防尘要求，说明覆盖网颜色缺依据。"
+    },
+    "U01": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "编程排序不属规范；两版本均未给无依据的排序结论。"
+    },
+    "U02": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "哈希表不属规范；基线和优化均拒绝规范回答。"
+    },
+    "U03": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "股票预测不属规范；未作涨跌预测。"
+    },
+    "U04": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "天气信息不在条款；基线额外列出真实停工条款但未预测天气。"
+    },
+    "U05": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范不规定法院管辖；未补造法院。"
+    },
+    "U06": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范不含工资个税计算；未补造税率或计算结果。"
+    },
+    "U07": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "历史年份不属规范；未补造年份。"
+    },
+    "U08": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "外语自我介绍不属规范；无依据回答未被接受。"
+    },
+    "U09": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "音乐作者不属规范；未猜测作者。"
+    },
+    "U10": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "电影推荐不属规范；未补造推荐。"
+    },
+    "M01": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范要求按设计施工方案监测，未规定每日固定次数。"
+    },
+    "M02": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范要求井口防护，未规定钢板统一厚度。"
+    },
+    "M03": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范规定佩戴安全帽，未规定报废月份。"
+    },
+    "M04": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范规定佩戴安全带，未规定报废年限。"
+    },
+    "M05": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范要求临边防护，未规定验收签字人数。"
+    },
+    "M06": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有脚手架立杆统一间距。"
+    },
+    "M07": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有塔吊检定月份。"
+    },
+    "M08": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有每100平方米灭火器数量。"
+    },
+    "M09": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有配电箱间距数值。"
+    },
+    "M10": {
+      "supported_points_valid": true,
+      "unsupported_points_complete": true,
+      "answer_grounded": true,
+      "baseline_unsupported_claim": false,
+      "notes": "规范没有统一漏电保护额定动作电流。"
+    }
+  },
+  "reports": {}
+}

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import OrderEvent, User, WorkOrder
+from ..deps import current_project
+from ..models import OrderEvent, Project, User, WorkOrder
 from ..schemas import ActionIn
 from ..serializers import event_to_dict, order_to_dict
 
+logger = logging.getLogger("zhuan.orders")
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 OPEN_STATUSES = ("pending_review", "dispatched", "rectifying", "recheck")
@@ -27,6 +30,8 @@ def sweep_overdue(db: Session) -> int:
         .update({WorkOrder.overdue: True}, synchronize_session=False)
     )
     db.commit()
+    if n:
+        logger.info("超期巡检：%d 个工单被标记为超期", n)
     return n
 
 
@@ -47,9 +52,10 @@ def list_orders(
     mine: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
 ):
     sweep_overdue(db)
-    query = db.query(WorkOrder)
+    query = db.query(WorkOrder).filter(WorkOrder.project_id == project.id)
     if user.role == "responsible" or mine:
         query = query.filter(WorkOrder.responsible_user_id == user.id)
     if status:
@@ -69,8 +75,15 @@ def list_orders(
 
 
 @router.get("/{order_id}")
-def order_detail(order_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def order_detail(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    project: Project = Depends(current_project),
+):
     o = _get_order_checked(db, order_id, user)
+    if o.project_id != project.id:
+        raise HTTPException(status_code=404, detail="工单不存在")
     events = (
         db.query(OrderEvent)
         .filter(OrderEvent.order_id == o.id)
@@ -162,4 +175,6 @@ def order_action(
     o.updated_at = now
     db.commit()
     db.refresh(o)
+    logger.info("工单操作 order=%s action=%s operator=%s(%s) -> status=%s",
+                o.order_no, action, user.name, user.role, o.status)
     return {"order": order_to_dict(o)}
