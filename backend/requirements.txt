@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+colorama
 sqlalchemy>=2.0
 pymysql
 cryptography
